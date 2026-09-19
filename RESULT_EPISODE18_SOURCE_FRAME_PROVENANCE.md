@@ -46,9 +46,23 @@ relocated paths_interpolated.pt: a8600ddff186d6318e07afb37ba580d0ae2cc12fb1389c5
 relocated sequence_metadata.json: 9b1598b2d50d622125ddf8c02add4aa673dd1d7d781ad43ee9dbd94d363f2ea9
 ```
 
+## Branch-level root cause
+
+`mpm-adapter-scan` traced the exporter branch logic in `export_deformpath2_offline.py:949-1017` and confirmed that the two files were produced by different output-frame paths. The DeformPath2 training export predates the later output-frame option and transforms poses into the point cloud's camera optical frame. The verified DeformPath3 export explicitly selects `output_frame: mocap` and interpolates poses directly in mocap coordinates. The shared `pose_reference_frame_mode: pointcloud` field is unused by the mocap branch and must not be used to infer that both exports share a frame.
+
+The approximately 13 cm difference is therefore a camera-optical-frame versus mocap-frame mismatch, not evidence that two mocap calibrations disagree. The empirical rigid fit remains diagnostic only. Its poor point-cloud alignment (nearest-neighbor median 50.4 mm; cloud-center median 92.9 mm) confirms it is not a physical camera calibration.
+
 ## Decision
 
-The two exports have matching timestamps but different coordinate frames and approximately 13 cm position differences. The existing metadata is insufficient to convert the policy output safely. The empirical rigid fit is diagnostic only and must not become the simulator calibration. `tool-friction-sweep` also tested it against point clouds: nearest-neighbor median residual was 50.4 mm and median cloud-center residual was 92.9 mm. The documented DeformPath3 color-optical transform performed much better (3.88 mm and 17.2 mm respectively), but it still cannot be applied to depth optical without the missing static depth/color/link transforms. The Kabsch result therefore likely recovers a legacy tool-label conversion rather than a physical camera calibration.
+The frame conversion is now clear, but its exact static camera extrinsic is still required. Because the DeformPath2 target frame is `camera_depth_optical_frame`, recover the original bag's exact `camera_link -> camera_depth_frame -> camera_depth_optical_frame` chain, compose it with the archived DeformPath2 camera-link-to-mocap calibration, invert the result to map depth-optical predictions into mocap, and validate all 388 tool poses and point clouds against `relocated_episode18`. The color-optical chain may be used only as an independent check. Do not substitute the color transform, nominal optical rotation, or an empirical Kabsch fit.
+
+Before paired MPM policy conditions run, obtain one of:
+
+1. the original bag's exact static camera transforms;
+2. matching mocap-frame training data and a checkpoint trained from it;
+3. a verified camera calibration bundle containing the required static extrinsic.
+
+Record the exact transform provenance, both input hashes, quaternion composition order, and residual statistics. Otherwise keep the paired run blocked.
 
 Before paired MPM policy conditions run, obtain one of:
 
