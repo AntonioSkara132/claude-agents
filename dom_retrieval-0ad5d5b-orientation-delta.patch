@@ -1,0 +1,589 @@
+From 0ad5d5bf67ba28caab4fc6531a99f4a569c09bb3 Mon Sep 17 00:00:00 2001
+From: AntonioSkara132 <conio1240@gmail.com>
+Date: Sat, 19 Sep 2026 15:39:47 +0200
+Subject: [PATCH] Add orientation delta pose heads
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+---
+ .../deformpath_pose_orientation_delta.yaml    | 40 ++++++++++
+ data/coordinates.py                           |  3 +-
+ interfaces.py                                 |  1 +
+ models/direct_policy.py                       | 27 +++++--
+ models/residual.py                            |  7 +-
+ models/retrieval_policy.py                    | 26 ++++++-
+ models/trajectory_transformer.py              | 36 +++++++--
+ poses.py                                      | 74 +++++++++++++++++++
+ tests/test_models.py                          | 26 ++++++-
+ tests/test_poses.py                           | 28 ++++++-
+ training/losses.py                            |  3 +-
+ training/trainer.py                           | 38 ++++++++--
+ 12 files changed, 284 insertions(+), 25 deletions(-)
+ create mode 100644 configs/deformpath_pose_orientation_delta.yaml
+
+diff --git a/configs/deformpath_pose_orientation_delta.yaml b/configs/deformpath_pose_orientation_delta.yaml
+new file mode 100644
+index 0000000..bc879ca
+--- /dev/null
++++ b/configs/deformpath_pose_orientation_delta.yaml
+@@ -0,0 +1,40 @@
++seed: 7
++device: auto
++threads: 2
++horizon: 32
++data:
++  kind: deformpath
++  root: Deformapth2_predownsampled1024_interpolated
++  source_root: DeformPath2_release/DeformPath/DeformPath2Bags
++  points: 1024
++  mode: segments
++  max_gap_seconds: 0.2
++  min_samples: 3
++  history_length: 8
++  history_window_seconds: 0.7
++  history_max_gap_seconds: 0.2
++  target_representation: xyz_quaternion
++pose_parameterization: orientation_delta
++encoder:
++  kind: pointnet
++  embedding_dim: 32
++  hidden_dim: 64
++history:
++  enabled: true
++  mode: full
++  hidden_dim: 64
++k: 100
++temperature: 0.1
++freeze_encoder: false
++pretrain_epochs: 20
++autoencoder_epochs: 30
++epochs: 1000
++batch_size: 32
++learning_rate: 0.001
++loss:
++  trajectory: 1.0
++  orientation: 1.0
++  residual: 0.001
++  acceleration: 0.0001
++  contrastive: 0.1
++methods: [direct, cartesian_residual, latent_residual, transformer_residual]
+diff --git a/data/coordinates.py b/data/coordinates.py
+index af065f6..e0f2c9a 100644
+--- a/data/coordinates.py
++++ b/data/coordinates.py
+@@ -237,4 +237,5 @@ def output_to_scene(output: PolicyOutput, demos: Sequence[Demonstration]) -> Pol
+     """Undo coordinate transforms AFTER undoing fitted trajectory normalization."""
+     return replace(output, prediction=batch_to_scene(output.prediction, demos),
+                    reference=None if output.reference is None else batch_to_scene(output.reference, demos),
+-                   residual=None if output.residual is None else residual_to_scene(output.residual, demos))
++                   residual=None if output.residual is None else residual_to_scene(output.residual, demos),
++                   raw_residual=None if output.raw_residual is None else residual_to_scene(output.raw_residual, demos))
+diff --git a/interfaces.py b/interfaces.py
+index 9274194..d5a8084 100644
+--- a/interfaces.py
++++ b/interfaces.py
+@@ -45,6 +45,7 @@ class PolicyOutput:
+     prediction: torch.Tensor
+     reference: torch.Tensor | None = None
+     residual: torch.Tensor | None = None
++    raw_residual: torch.Tensor | None = None
+     indices: torch.Tensor | None = None
+     weights: torch.Tensor | None = None
+     scores: torch.Tensor | None = None
+diff --git a/models/direct_policy.py b/models/direct_policy.py
+index 0f95a56..2d363af 100644
+--- a/models/direct_policy.py
++++ b/models/direct_policy.py
+@@ -6,22 +6,39 @@ from torch import nn
+ 
+ from ..interfaces import PolicyOutput
+ from ..observations import ObservationBatch
+-from ..poses import project_pose_trajectory
++from ..poses import POSE_DELTA_DIM, compose_orientation_delta, current_tool_pose, project_pose_trajectory
+ 
+ 
+ class DirectPolicy(nn.Module):
+     def __init__(self, encoder: nn.Module, horizon: int, action_dim: int,
+-                 embedding_dim: int = 32, hidden_dim: int = 64) -> None:
++                 embedding_dim: int = 32, hidden_dim: int = 64,
++                 pose_parameterization: str = "absolute") -> None:
+         super().__init__()
+         if min(horizon, action_dim, embedding_dim, hidden_dim) < 1:
+             raise ValueError("Policy dimensions must be positive")
++        if pose_parameterization not in ("absolute", "orientation_delta"):
++            raise ValueError("Unknown pose parameterization")
++        if pose_parameterization == "orientation_delta" and action_dim != 14:
++            raise ValueError("Orientation delta requires 14D pose targets")
+         self.encoder = encoder
+         self.horizon, self.action_dim = horizon, action_dim
++        self.pose_parameterization = pose_parameterization
++        output_dim = POSE_DELTA_DIM if pose_parameterization == "orientation_delta" else action_dim
+         self.head = nn.Sequential(nn.Linear(embedding_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+-                                  nn.Linear(hidden_dim, horizon * action_dim))
++                                  nn.Linear(hidden_dim, horizon * output_dim))
++        if pose_parameterization == "orientation_delta":
++            nn.init.zeros_(self.head[-1].weight)
++            nn.init.zeros_(self.head[-1].bias)
+ 
+     def forward(self, observations: ObservationBatch,
+                 query_groups: Sequence[str] | None = None) -> PolicyOutput:
+-        prediction = self.head(self.encoder(observations)).reshape(-1, self.horizon, self.action_dim)
+-        return PolicyOutput(prediction=project_pose_trajectory(prediction))
++        raw = self.head(self.encoder(observations)).reshape(-1, self.horizon,
++                                                             POSE_DELTA_DIM if self.pose_parameterization == "orientation_delta" else self.action_dim)
++        if self.pose_parameterization == "orientation_delta":
++            if not isinstance(observations, dict):
++                raise ValueError("Orientation delta requires structured observations")
++            positions = raw[..., (0, 1, 2, 6, 7, 8)]
++            prediction = compose_orientation_delta(current_tool_pose(observations), raw, positions)
++            return PolicyOutput(prediction=prediction)
++        return PolicyOutput(prediction=project_pose_trajectory(raw))
+diff --git a/models/residual.py b/models/residual.py
+index d9544ca..3b62017 100644
+--- a/models/residual.py
++++ b/models/residual.py
+@@ -5,13 +5,14 @@ from torch import nn
+ 
+ class ResidualNetwork(nn.Module):
+     def __init__(self, horizon: int, action_dim: int, embedding_dim: int = 32,
+-                 hidden_dim: int = 64) -> None:
++                 hidden_dim: int = 64, output_dim: int | None = None) -> None:
+         super().__init__()
+         self.horizon, self.action_dim = horizon, action_dim
++        self.output_dim = action_dim if output_dim is None else output_dim
+         self.network = nn.Sequential(
+             nn.Linear(embedding_dim + horizon * action_dim, hidden_dim), nn.ReLU(),
+             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+-            nn.Linear(hidden_dim, horizon * action_dim),
++            nn.Linear(hidden_dim, horizon * self.output_dim),
+         )
+         nn.init.zeros_(self.network[-1].weight)
+         nn.init.zeros_(self.network[-1].bias)
+@@ -20,4 +21,4 @@ class ResidualNetwork(nn.Module):
+         if tuple(reference.shape[1:]) != (self.horizon, self.action_dim):
+             raise ValueError("Reference trajectory dimensions disagree with residual network")
+         inputs = torch.cat((embedding, reference.flatten(start_dim=1)), dim=-1)
+-        return self.network(inputs).reshape(-1, self.horizon, self.action_dim)
++        return self.network(inputs).reshape(-1, self.horizon, self.output_dim)
+diff --git a/models/retrieval_policy.py b/models/retrieval_policy.py
+index 5f273f1..7688c3e 100644
+--- a/models/retrieval_policy.py
++++ b/models/retrieval_policy.py
+@@ -9,7 +9,8 @@ from ..observations import ObservationBatch
+ from .residual import ResidualNetwork
+ from .retrieval import CosineTopK, MemoryBank
+ from .trajectory_autoencoder import TrajectoryAutoencoder
+-from ..poses import project_pose_trajectory, weighted_pose_mean
++from ..poses import (POSE_DELTA_DIM, compose_orientation_delta, current_tool_pose,
++                     project_pose_trajectory, weighted_pose_mean)
+ 
+ 
+ class RetrievalPolicy(nn.Module):
+@@ -17,7 +18,8 @@ class RetrievalPolicy(nn.Module):
+                  action_dim: int, mode: str = "nearest", k: int = 5,
+                  temperature: float = 0.1, learn_temperature: bool = False,
+                  residual: bool = True, embedding_dim: int = 32, hidden_dim: int = 64,
+-                 autoencoder: TrajectoryAutoencoder | None = None) -> None:
++                 autoencoder: TrajectoryAutoencoder | None = None,
++                 pose_parameterization: str = "absolute") -> None:
+         super().__init__()
+         if mode not in ("nearest", "cartesian", "latent"):
+             raise ValueError(f"Unknown trajectory reference mode: {mode}")
+@@ -25,10 +27,17 @@ class RetrievalPolicy(nn.Module):
+             raise ValueError("Memory trajectories disagree with policy horizon/action_dim")
+         if mode == "latent" and autoencoder is None:
+             raise ValueError("Latent reference construction requires a trained trajectory autoencoder")
++        if pose_parameterization not in ("absolute", "orientation_delta"):
++            raise ValueError("Unknown pose parameterization")
++        if pose_parameterization == "orientation_delta" and action_dim != 14:
++            raise ValueError("Orientation delta requires 14D pose targets")
+         self.encoder, self.memory, self.mode = encoder, memory, mode
+         self.horizon, self.action_dim = horizon, action_dim
++        self.pose_parameterization = pose_parameterization
+         self.retriever = CosineTopK(1 if mode == "nearest" else k, temperature, learn_temperature)
+-        self.residual = ResidualNetwork(horizon, action_dim, embedding_dim, hidden_dim) if residual else None
++        output_dim = POSE_DELTA_DIM if pose_parameterization == "orientation_delta" else action_dim
++        self.residual = (ResidualNetwork(horizon, action_dim, embedding_dim, hidden_dim, output_dim)
++                         if residual else None)
+         self.autoencoder = autoencoder
+         if autoencoder is not None:
+             autoencoder.requires_grad_(False)
+@@ -67,6 +76,17 @@ class RetrievalPolicy(nn.Module):
+         else:
+             reference = weighted_pose_mean(trajectories, retrieved.weights)
+         reference = project_pose_trajectory(reference)
++        if self.pose_parameterization == "orientation_delta":
++            if not isinstance(observations, dict):
++                raise ValueError("Orientation delta requires structured observations")
++            delta = (self.residual(embedding, reference) if self.residual is not None
++                     else reference.new_zeros(reference.shape[:-1] + (POSE_DELTA_DIM,)))
++            reference_values = reference.reshape(*reference.shape[:-1], 2, 7)
++            positions = reference_values[..., :3].reshape(reference.shape[0], reference.shape[1], 6)
++            positions = positions + delta[..., (0, 1, 2, 6, 7, 8)]
++            prediction = compose_orientation_delta(current_tool_pose(observations), delta, positions)
++            return PolicyOutput(prediction=prediction, reference=reference, raw_residual=delta,
++                                **({} if retrieved is None else vars(retrieved)))
+         delta = self.residual(embedding, reference) if self.residual is not None else torch.zeros_like(reference)
+         return PolicyOutput(
+             prediction=project_pose_trajectory(reference + delta), reference=reference, residual=delta,
+diff --git a/models/trajectory_transformer.py b/models/trajectory_transformer.py
+index c3c0f8c..6f08d4f 100644
+--- a/models/trajectory_transformer.py
++++ b/models/trajectory_transformer.py
+@@ -8,7 +8,8 @@ from torch import nn
+ from ..interfaces import PolicyOutput
+ from ..observations import ObservationBatch
+ from .retrieval import CosineTopK, MemoryBank, RetrievalResult
+-from ..poses import project_pose_trajectory
++from ..poses import (POSE_DELTA_DIM, compose_orientation_delta, current_tool_pose,
++                     project_pose_trajectory)
+ 
+ 
+ def intervene_trajectories(memory: MemoryBank, retrieved: RetrievalResult,
+@@ -41,14 +42,20 @@ class TrajectoryTransformer(nn.Module):
+     def __init__(self, encoder: nn.Module, horizon: int, action_dim: int,
+                  embedding_dim: int = 32, width: int = 64, heads: int = 4,
+                  layers: int = 2, dropout: float = 0., memory: MemoryBank | None = None,
+-                 k: int = 5, temperature: float = .1) -> None:
++                 k: int = 5, temperature: float = .1,
++                 pose_parameterization: str = "absolute") -> None:
+         super().__init__()
+         if min(horizon, action_dim, width, heads, layers) < 1 or width % heads:
+             raise ValueError("Transformer dimensions must be positive and width divisible by heads")
+         if not 0 <= dropout < 1:
+             raise ValueError("Transformer dropout must be in [0,1)")
++        if pose_parameterization not in ("absolute", "orientation_delta"):
++            raise ValueError("Unknown pose parameterization")
++        if pose_parameterization == "orientation_delta" and action_dim != 14:
++            raise ValueError("Orientation delta requires 14D pose targets")
+         self.encoder = encoder
+         self.horizon, self.action_dim = horizon, action_dim
++        self.pose_parameterization = pose_parameterization
+         self.state_projection = nn.Linear(embedding_dim, width)
+         self.phase_projection = nn.Linear(3, width)
+         phase = torch.linspace(0, 1, horizon)
+@@ -56,7 +63,10 @@ class TrajectoryTransformer(nn.Module):
+         layer = nn.TransformerDecoderLayer(width, heads, dim_feedforward=width * 2,
+                                            dropout=dropout, batch_first=True, activation="gelu")
+         self.decoder = nn.TransformerDecoder(layer, layers)
+-        self.output = nn.Linear(width, action_dim)
++        self.output = nn.Linear(width, POSE_DELTA_DIM if pose_parameterization == "orientation_delta" else action_dim)
++        if pose_parameterization == "orientation_delta":
++            nn.init.zeros_(self.output.weight)
++            nn.init.zeros_(self.output.bias)
+         if memory is not None:
+             if tuple(memory.trajectories.shape[1:]) != (horizon, action_dim):
+                 raise ValueError("Memory trajectory dimensions disagree with transformer")
+@@ -78,7 +88,14 @@ class TrajectoryTransformer(nn.Module):
+         if not hasattr(self, "memory"):
+             if intervention != "none":
+                 raise ValueError("Direct transformer has no retrieval to intervene on")
+-            prediction = project_pose_trajectory(self.output(self.decoder(query, state)))
++            raw = self.output(self.decoder(query, state))
++            if self.pose_parameterization == "orientation_delta":
++                if not isinstance(observations, dict):
++                    raise ValueError("Orientation delta requires structured observations")
++                prediction = compose_orientation_delta(current_tool_pose(observations), raw,
++                                                       raw[..., (0, 1, 2, 6, 7, 8)])
++            else:
++                prediction = project_pose_trajectory(raw)
+             return PolicyOutput(prediction)
+         self.memory.validate_membership()
+         if self.training and query_groups is None:
+@@ -93,4 +110,13 @@ class TrajectoryTransformer(nn.Module):
+         reference = trajectories[:, 0]
+         residual = self.output(self.decoder(query, context))
+         fields = {} if retrieved is None else vars(retrieved)
+-        return PolicyOutput(project_pose_trajectory(reference + residual), project_pose_trajectory(reference), residual, **fields)
++        reference = project_pose_trajectory(reference)
++        if self.pose_parameterization == "orientation_delta":
++            if not isinstance(observations, dict):
++                raise ValueError("Orientation delta requires structured observations")
++            reference_values = reference.reshape(*reference.shape[:-1], 2, 7)
++            positions = reference_values[..., :3].reshape(reference.shape[0], reference.shape[1], 6)
++            positions = positions + residual[..., (0, 1, 2, 6, 7, 8)]
++            prediction = compose_orientation_delta(current_tool_pose(observations), residual, positions)
++            return PolicyOutput(prediction, reference, raw_residual=residual, **fields)
++        return PolicyOutput(project_pose_trajectory(reference + residual), reference, residual, **fields)
+diff --git a/poses.py b/poses.py
+index 973a1a2..7790c67 100644
+--- a/poses.py
++++ b/poses.py
+@@ -7,6 +7,7 @@ import torch
+ 
+ 
+ POSE_DIM = 14
++POSE_DELTA_DIM = 12
+ 
+ 
+ def is_pose_trajectory(values: torch.Tensor) -> bool:
+@@ -43,6 +44,79 @@ def project_pose_trajectory(values: torch.Tensor) -> torch.Tensor:
+     return torch.cat((pose[..., :3], quaternions), dim=-1).reshape_as(values)
+ 
+ 
++def quaternion_multiply(first: torch.Tensor, second: torch.Tensor) -> torch.Tensor:
++    """Return the XYZW Hamilton product ``first * second``."""
++    if first.shape != second.shape or first.shape[-1] != 4:
++        raise ValueError("Quaternion operands must have matching [...,4] dimensions")
++    x1, y1, z1, w1 = first.unbind(-1)
++    x2, y2, z2, w2 = second.unbind(-1)
++    return torch.stack((
++        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
++        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
++        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
++        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
++    ), dim=-1)
++
++
++def quaternion_from_rotation_vector(rotation: torch.Tensor) -> torch.Tensor:
++    """Map rotation vectors to unit XYZW quaternions with a stable zero limit."""
++    if rotation.shape[-1] != 3 or not torch.isfinite(rotation).all():
++        raise ValueError("Rotation vectors must be finite [...,3] tensors")
++    theta = torch.linalg.vector_norm(rotation, dim=-1, keepdim=True)
++    half = theta * 0.5
++    factor = torch.where(theta < 1e-6, 0.5 - theta.square() / 48.,
++                         torch.sin(half) / theta.clamp_min(1e-8))
++    quaternion = torch.cat((rotation * factor, torch.cos(half)), dim=-1)
++    return quaternion / torch.linalg.vector_norm(quaternion, dim=-1, keepdim=True).clamp_min(1e-8)
++
++
++def current_tool_pose(observations: dict[str, torch.Tensor]) -> torch.Tensor:
++    """Return the measured current two-tool pose as [B,14]."""
++    if not isinstance(observations, dict):
++        raise ValueError("Orientation-delta output requires structured observations")
++    if "tool_positions" in observations and observations["tool_positions"].shape[-1] == POSE_DIM:
++        pose = observations["tool_positions"]
++    elif {"history_tool_positions", "history_mask"} <= observations.keys():
++        tools, mask = observations["history_tool_positions"], observations["history_mask"]
++        if tools.ndim != 3 or tools.shape[-1] != POSE_DIM or mask.shape != tools.shape[:2]:
++            raise ValueError("Temporal current pose must use [B,H,14] tool history")
++        rows = torch.arange(len(tools), device=tools.device)
++        pose = tools[rows, mask.sum(dim=1) - 1]
++    else:
++        raise ValueError("Orientation-delta output requires measured tool pose")
++    if pose.ndim != 2 or pose.shape[-1] != POSE_DIM or not pose.is_floating_point() or not torch.isfinite(pose).all():
++        raise ValueError("Measured current tool pose must be finite floating-point [B,14]")
++    values = pose.reshape(-1, 2, 7)
++    quaternions = normalize_quaternions(values[..., 3:])
++    return torch.cat((values[..., :3], quaternions), dim=-1).reshape_as(pose)
++
++
++def compose_orientation_delta(current: torch.Tensor, delta: torch.Tensor,
++                              positions: torch.Tensor | None = None) -> torch.Tensor:
++    """Decode [B,T,12] world-frame corrections into absolute [B,T,14] poses.
++
++    Each delta waypoint is ``[tool0_xyz, tool0_rotvec, tool1_xyz, tool1_rotvec]``.
++    Rotation uses the extrinsic convention ``q_delta * q_current``. If positions
++    is supplied it provides the absolute XYZ blocks; otherwise delta XYZ blocks
++    are returned as absolute positions.
++    """
++    if current.ndim != 2 or current.shape[-1] != POSE_DIM or delta.ndim != 3 or delta.shape[-1] != POSE_DELTA_DIM:
++        raise ValueError("Expected current [B,14] and delta [B,T,12]")
++    if len(current) != len(delta) or not torch.isfinite(delta).all():
++        raise ValueError("Current pose and delta batches must match and be finite")
++    if positions is None:
++        positions = delta[..., (0, 1, 2, 6, 7, 8)]
++    if positions.shape != delta.shape[:-1] + (6,):
++        raise ValueError("Absolute positions must have [B,T,6] dimensions")
++    base = current.reshape(-1, 2, 7)
++    current_q = base[..., 3:].unsqueeze(1).expand(-1, delta.shape[1], -1, -1)
++    values = delta.reshape(len(delta), delta.shape[1], 2, 6)
++    q_delta = quaternion_from_rotation_vector(values[..., 3:])
++    composed = quaternion_multiply(q_delta, current_q)
++    pose = torch.cat((positions.reshape(len(delta), delta.shape[1], 2, 3), composed), dim=-1)
++    return project_pose_trajectory(pose.reshape(len(delta), delta.shape[1], POSE_DIM))
++
++
+ def position_channels(dimensions: int, device: torch.device | None = None) -> torch.Tensor | slice:
+     if dimensions == 6:
+         return slice(None)
+diff --git a/tests/test_models.py b/tests/test_models.py
+index 95a3b37..de3b6a0 100644
+--- a/tests/test_models.py
++++ b/tests/test_models.py
+@@ -9,7 +9,8 @@ import torch
+ from dom_retrieval.interfaces import Demonstration, Split
+ from dom_retrieval.models import (CosineTopK, DirectPolicy, MemoryBank, RetrievalPolicy,
+                                   TrajectoryAutoencoder, build_encoder)
+-from dom_retrieval.models.perception import normalize_cloud
++from dom_retrieval.models.perception import ProprioceptiveEncoder, normalize_cloud
++from dom_retrieval.models.trajectory_transformer import TrajectoryTransformer
+ 
+ 
+ def example_split() -> Split:
+@@ -184,6 +185,29 @@ class RetrievalTests(unittest.TestCase):
+         model(x).square().mean().backward()
+         self.assertTrue(all(p.grad is not None for p in model.parameters()))
+ 
++    def test_orientation_delta_direct_and_retrieval_outputs(self) -> None:
++        q = torch.tensor([0., 0., 0., 1.])
++        pose = torch.cat((torch.zeros(3), q, torch.ones(3), q))
++        observations = {"observation": torch.randn(2, 12, 3),
++                       "tool_positions": pose.repeat(2, 1)}
++        frame = build_encoder({"kind": "pointnet", "embedding_dim": 8}, (12, 3))
++        encoder = ProprioceptiveEncoder(frame, embedding_dim=8, hidden_dim=16, pose_dim=14)
++        direct = DirectPolicy(encoder, 8, 14, embedding_dim=8, hidden_dim=16,
++                              pose_parameterization="orientation_delta")
++        output = direct(observations).prediction
++        self.assertEqual(tuple(output.shape), (2, 8, 14))
++        torch.testing.assert_close(output[..., 3:7], pose[None, None, 3:7].expand(2, 8, 4))
++        memory_demos = [Demonstration(str(i), f"g{i}", observations["observation"][0],
++                                      pose.repeat(8, 1), tool_positions=pose)
++                        for i in range(4)]
++        memory = MemoryBank(Split(memory_demos[:2], [memory_demos[2]], [memory_demos[3]]))
++        retrieval = RetrievalPolicy(encoder, memory, 8, 14, mode="cartesian", k=1,
++                                    embedding_dim=8, hidden_dim=16,
++                                    pose_parameterization="orientation_delta")
++        result = retrieval(observations, ["g2", "g2"]).prediction
++        self.assertEqual(tuple(result.shape), (2, 8, 14))
++        self.assertTrue(torch.isfinite(result).all())
++
+ 
+ if __name__ == "__main__":
+     unittest.main()
+diff --git a/tests/test_poses.py b/tests/test_poses.py
+index dfbcf7f..a25d6b3 100644
+--- a/tests/test_poses.py
++++ b/tests/test_poses.py
+@@ -5,7 +5,9 @@ import torch
+ from dom_retrieval.data.preprocessing import TrajectoryNormalizer, resample_trajectory
+ from dom_retrieval.interfaces import Demonstration, PolicyOutput
+ from dom_retrieval.evaluation.metrics import compute_metrics
+-from dom_retrieval.poses import project_pose_trajectory, quaternion_geodesic_degrees, weighted_pose_mean
++from dom_retrieval.poses import (compose_orientation_delta, current_tool_pose,
++                                  project_pose_trajectory, quaternion_from_rotation_vector,
++                                  quaternion_geodesic_degrees, weighted_pose_mean)
+ from dom_retrieval.training.losses import LossWeights, trajectory_loss
+ 
+ 
+@@ -36,6 +38,30 @@ class PoseTrajectoryTests(unittest.TestCase):
+         metrics = compute_metrics(PolicyOutput(project_pose_trajectory(prediction)), target)
+         self.assertLess(metrics["average_orientation_error_degrees"], .1)
+ 
++    def test_orientation_delta_identity_and_known_rotation(self):
++        identity = quaternion_from_rotation_vector(torch.zeros(2, 3))
++        torch.testing.assert_close(identity, torch.tensor([[0., 0., 0., 1.]]).repeat(2, 1))
++        current = self.trajectory[0].repeat(2, 1)
++        delta = torch.zeros(2, 3, 12)
++        result = compose_orientation_delta(current, delta)
++        torch.testing.assert_close(result[..., 3:7], current[:, None, 3:7].expand(2, 3, 4))
++        torch.testing.assert_close(result[..., 10:14], current[:, None, 10:14].expand(2, 3, 4))
++        delta[0, :, 5] = torch.pi / 2
++        result = compose_orientation_delta(current, delta)
++        expected = torch.tensor([0., 0., 2**-0.5, 2**-0.5])
++        torch.testing.assert_close(result[0, 0, 3:7], expected, atol=1e-6, rtol=1e-6)
++
++    def test_current_pose_static_and_temporal(self):
++        pose = self.trajectory[0].repeat(2, 1)
++        static = current_tool_pose({"tool_positions": pose})
++        history = pose[:, None, :].repeat(1, 3, 1)
++        history[:, 0, :3] += 1
++        temporal = current_tool_pose({"history_tool_positions": history,
++                                       "history_mask": torch.tensor([[True, True, False], [True, True, True]])})
++        torch.testing.assert_close(static, temporal)
++        with self.assertRaises(ValueError):
++            current_tool_pose({"tool_positions": pose[:, :6]})
++
+     def test_weighted_reference_is_a_valid_pose(self):
+         values = self.trajectory[None, None].repeat(1, 2, 1, 1)
+         values[:, 1].reshape(1, 2, 2, 7)[..., 3:] *= -1
+diff --git a/training/losses.py b/training/losses.py
+index d920191..029ef29 100644
+--- a/training/losses.py
++++ b/training/losses.py
+@@ -25,9 +25,10 @@ def trajectory_loss(output: PolicyOutput, target: Tensor,
+     zero = prediction.sum() * 0
+     position_loss, orientation_loss = pose_discrepancy(prediction, target)
+     positions = prediction[..., position_channels(prediction.shape[-1], prediction.device)]
++    raw_residual = output.raw_residual if output.raw_residual is not None else output.residual
+     components = {"trajectory": position_loss,
+                   "orientation": orientation_loss,
+-                  "residual": output.residual.square().mean() if output.residual is not None else zero,
++                  "residual": raw_residual.square().mean() if raw_residual is not None else zero,
+                   "velocity": positions.diff(dim=1).square().mean() if prediction.size(1) > 1 else zero,
+                   "acceleration": positions.diff(n=2, dim=1).square().mean() if prediction.size(1) > 2 else zero}
+     total = sum(getattr(weights, name) * value for name, value in components.items())
+diff --git a/training/trainer.py b/training/trainer.py
+index 91bd17f..0261dab 100644
+--- a/training/trainer.py
++++ b/training/trainer.py
+@@ -23,7 +23,7 @@ from dom_retrieval.data.coordinates import (
+ from dom_retrieval.observations import HISTORY_FIELDS, stack_observations, current_observations
+ from dom_retrieval.models.history import HistoryEncoder, preserve_frozen_backbones
+ from dom_retrieval.training.losses import LossWeights, contrastive_retrieval_loss, trajectory_loss
+-from dom_retrieval.poses import pose_discrepancy
++from dom_retrieval.poses import is_pose_trajectory, pose_discrepancy
+ 
+ METHODS = ("direct", "nearest", "nearest_residual", "cartesian", "cartesian_residual", "latent_residual")
+ ALL_METHODS = METHODS + ("transformer_direct", "transformer_residual")
+@@ -122,9 +122,22 @@ def make_policy(method: str, encoder: nn.Module, split: Split, config: dict[str,
+     if method not in ALL_METHODS:
+         raise ValueError(f"Unknown method {method}; choose from {ALL_METHODS}")
+     horizon, action_dim = split.train[0].trajectory.shape
++    pose_parameterization = str(config.get("pose_parameterization", "absolute"))
++    if pose_parameterization not in ("absolute", "orientation_delta"):
++        raise ValueError("pose_parameterization must be absolute or orientation_delta")
++    if pose_parameterization == "orientation_delta":
++        if action_dim != 14:
++            raise ValueError("orientation_delta requires 14D pose targets")
++        for demo in split.train:
++            pose = demo.tool_positions
++            history = demo.history_tool_positions
++            if not ((pose is not None and pose.shape[-1] == 14) or
++                    (history is not None and history.shape[-1] == 14)):
++                raise ValueError("orientation_delta requires measured 14D tool poses")
+     kwargs = {"horizon": horizon, "action_dim": action_dim,
+               "embedding_dim": int(config.get("encoder", {}).get("embedding_dim", 32)),
+-              "hidden_dim": int(config.get("hidden_dim", 64))}
++              "hidden_dim": int(config.get("hidden_dim", 64)),
++              "pose_parameterization": pose_parameterization}
+     if method == "direct":
+         return DirectPolicy(encoder, **kwargs)
+     if method.startswith("transformer_"):
+@@ -134,6 +147,7 @@ def make_policy(method: str, encoder: nn.Module, split: Split, config: dict[str,
+         return TrajectoryTransformer(encoder, horizon, action_dim, kwargs["embedding_dim"],
+                                      memory=MemoryBank(split) if method == "transformer_residual" else None,
+                                      k=int(config.get("k", 5)), temperature=float(config.get("temperature", .1)),
++                                     pose_parameterization=pose_parameterization,
+                                      **config.get("transformer", {}))
+     mode = "nearest" if method.startswith("nearest") else "latent" if method.startswith("latent") else "cartesian"
+     return RetrievalPolicy(encoder, MemoryBank(split), mode=mode,
+@@ -181,9 +195,16 @@ def train_autoencoder(split: Split, config: dict[str, Any], device: torch.device
+ 
+ 
+ def physical_output(output: PolicyOutput, mean: torch.Tensor, std: torch.Tensor) -> PolicyOutput:
++    raw_residual = output.raw_residual
++    if raw_residual is not None and raw_residual.shape[-1] == 12:
++        raw_std = std.new_ones(12)
++        raw_std[:3] = std[:3]
++        raw_std[6:9] = std[7:10]
++        raw_residual = raw_residual * raw_std
+     return replace(output, prediction=output.prediction * std + mean,
+                    reference=None if output.reference is None else output.reference * std + mean,
+-                   residual=None if output.residual is None else output.residual * std)
++                   residual=None if output.residual is None else output.residual * std,
++                   raw_residual=raw_residual)
+ 
+ 
+ @torch.no_grad()
+@@ -364,8 +385,15 @@ def run_experiment(split: Split, config: dict[str, Any], output_dir: str | Path)
+         raise FileExistsError(f"Output directory is not empty: {output_dir}; choose a new directory")
+     output_dir.mkdir(parents=True, exist_ok=True)
+     train_targets = torch.stack([d.trajectory for d in split.train])
+-    mean = train_targets.mean(dim=(0, 1))
+-    std = train_targets.std(dim=(0, 1), unbiased=False).clamp_min(1e-5)
++    if is_pose_trajectory(train_targets) and config.get("pose_parameterization", "absolute") == "orientation_delta":
++        mean = torch.zeros(train_targets.shape[-1], dtype=train_targets.dtype)
++        std = torch.ones_like(mean)
++        positions = torch.tensor((0, 1, 2, 7, 8, 9))
++        mean[positions] = train_targets[..., positions].mean(dim=(0, 1))
++        std[positions] = train_targets[..., positions].std(dim=(0, 1), unbiased=False).clamp_min(1e-5)
++    else:
++        mean = train_targets.mean(dim=(0, 1))
++        std = train_targets.std(dim=(0, 1), unbiased=False).clamp_min(1e-5)
+     normalized = normalized_split(split, mean, std)
+     manifest = split_manifest(split)
+     (output_dir / "split.json").write_text(json.dumps(manifest, indent=2))
+-- 
+2.34.1
+

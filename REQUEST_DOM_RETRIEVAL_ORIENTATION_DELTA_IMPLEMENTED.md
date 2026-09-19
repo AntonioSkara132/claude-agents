@@ -1,6 +1,24 @@
 # Orientation delta output implemented
 
-Implemented in local `dom_retrieval` commit `0ad5d5b` (`Add orientation delta pose heads`). The GitHub push could not complete because the local GitHub token is invalid; the commit is ready to push.
+Implemented in local `dom_retrieval` commit `0ad5d5b` (`Add orientation delta pose heads`). GitHub authentication is expired, so the commit is packaged for transfer instead of being pushed.
+
+Portable patch:
+
+```text
+dom_retrieval-0ad5d5b-orientation-delta.patch
+```
+
+SHA-256:
+
+```text
+04bc5055f7a89b0066feb63e38a8796abe059089cafa2b76c7e66c1534b74b1c
+```
+
+Apply it from the `dom_retrieval` repository with:
+
+```bash
+git am /path/to/dom_retrieval-0ad5d5b-orientation-delta.patch
+```
 
 ## What changed
 
