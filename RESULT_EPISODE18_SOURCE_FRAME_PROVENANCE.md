@@ -71,3 +71,19 @@ Before paired MPM policy conditions run, obtain one of:
 3. a verified depth-to-color transform plus the documented mocap/color transform, with validation over all 388 tool-pose frames.
 
 Record the exact transform provenance, both input hashes, quaternion composition order, and residual statistics. Otherwise keep the paired run blocked.
+
+## Diagnostic rigid fit (not a physical calibration)
+
+`tool-friction-sweep` fitted the training tool labels in `camera_depth_optical_frame` to the relocated tool labels in `mocap`, excluding anomalous frame 272. Use the convention `T_A_B` maps coordinates from frame B into frame A.
+
+```text
+T_M_DO =
+[ [ 0.003680170,  0.997599284, -0.069152912, 0.260031328 ],
+  [ 0.046511497, -0.069249300, -0.996514533, 0.525863257 ],
+  [-0.998910975,  0.000450937, -0.046654685, 0.853676561 ],
+  [ 0.000000000,  0.000000000,  0.000000000, 1.000000000 ] ]
+```
+
+Equivalent XYZW quaternion: `[0.52905202, 0.49338758, -0.50470646, 0.47110938]`.
+
+The fit retained 774/776 pose pairs, with 0.569 mm position RMS, 1.221 mm position p95, 0.154 degrees orientation RMS, and 0.319 degrees orientation p95. It is diagnostic only: applying it to point clouds gives 50.4 mm nearest-neighbor median and 92.9 mm cloud-center median residuals. Do not use it as the simulator transform.
