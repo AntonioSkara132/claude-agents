@@ -1,0 +1,247 @@
+From 6bc4a49ad850c93eaee1e8ec0b91c08f6effe7e3 Mon Sep 17 00:00:00 2001
+From: AntonioSkara132 <conio1240@gmail.com>
+Date: Sun, 20 Sep 2026 21:35:45 +0200
+Subject: [PATCH] Add VINN-RBF trajectory baseline
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+---
+ README.md                        |  5 ++-
+ configs/deformpath_vinn_rbf.yaml | 52 ++++++++++++++++++++++++++++++++
+ models/retrieval_policy.py       |  9 ++++--
+ scripts/train.py                 |  5 ++-
+ tests/test_models.py             |  9 ++++++
+ tests/test_training.py           | 21 +++++++++++--
+ training/trainer.py              |  6 ++--
+ 7 files changed, 97 insertions(+), 10 deletions(-)
+ create mode 100644 configs/deformpath_vinn_rbf.yaml
+
+diff --git a/README.md b/README.md
+index ba2013c..86baea4 100644
+--- a/README.md
++++ b/README.md
+@@ -68,9 +68,12 @@ The legacy residual branch sees the complete flattened reference as well as the
+ | `nearest` | Single nearest demonstration | No |
+ | `nearest_residual` | Single nearest demonstration | Yes |
+ | `cartesian` | Top-K Cartesian mixture | No |
++| `vinn_rbf` | Top-K RBF-weighted Cartesian mixture | No |
+ | `cartesian_residual` | Top-K Cartesian mixture | Yes |
+ | `latent_residual` | Decoded Top-K latent mixture | Yes |
+ 
++`vinn_rbf` is a VINN-style locally weighted regression baseline adapted to complete trajectories. It requires `retrieval_mode: rbf`, retrieves only from the training memory, averages the selected pose trajectories with normalized RBF weights, and has no residual network. The matched DeformPath configuration is `configs/deformpath_vinn_rbf.yaml`.
++
+ Select methods with `--methods direct nearest_residual`, or edit the YAML list. The shared factories in `training/trainer.py` are the extension point for additional policy baselines.
+ 
+ Retrieval residual policies accept `residual_mode: per_waypoint` (the backward-compatible default) or `residual_mode: constant`. The constant mode predicts one residual vector and broadcasts it across every waypoint:
+@@ -85,7 +88,7 @@ For orientation-delta targets, this is one 12-value correction (six position and
+ ### Training
+ 
+ 1. Fit per-channel trajectory mean/std from training trajectories only.
+-2. Pretrain a common perception encoder using a temporary trajectory-regression head on training data. All six methods start from the same encoder parameters.
++2. Pretrain a common perception encoder using a temporary trajectory-regression head on training data. All configured methods start from the same encoder parameters.
+ 3. Train the trajectory autoencoder on training trajectories only, then freeze it for latent-reference prediction.
+ 4. Train each policy, selecting the checkpoint by validation trajectory MSE. The initial checkpoint is a candidate as well. Optional validation-loss early stopping checks the loss after every epoch, stops after the configured patience of non-improving epochs, and restores the best checkpoint.
+ 5. Evaluate on held-out episodes and export predictions and retrieval diagnostics.
+diff --git a/configs/deformpath_vinn_rbf.yaml b/configs/deformpath_vinn_rbf.yaml
+new file mode 100644
+index 0000000..bdc1c9f
+--- /dev/null
++++ b/configs/deformpath_vinn_rbf.yaml
+@@ -0,0 +1,52 @@
++seed: 7
++device: auto
++threads: 2
++horizon: 32
++
++data:
++  kind: deformpath
++  root: Deformapth2_camera1024_interpolated_nodbscan
++  source_root: DeformPath2_release/DeformPath/DeformPath2Bags
++  points: 1024
++  mode: segments
++  max_gap_seconds: 0.2
++  min_samples: 3
++  history_length: 8
++  history_window_seconds: 0.7
++  history_max_gap_seconds: 0.2
++  target_representation: xyz_quaternion
++
++pose_parameterization: orientation_delta
++
++encoder:
++  kind: pointnet
++  embedding_dim: 32
++  hidden_dim: 64
++
++history:
++  enabled: true
++  mode: full
++  hidden_dim: 64
++
++k: 100
++retrieval_mode: rbf
++retrieval_bandwidth: 0.15
++retrieval_all: false
++freeze_encoder: false
++pretrain_epochs: 20
++epochs: 1000
++batch_size: 32
++learning_rate: 0.001
++early_stopping:
++  enabled: true
++  patience: 30
++  min_delta: 0.0
++
++loss:
++  trajectory: 1.0
++  orientation: 1.0
++  residual: 0.0
++  acceleration: 0.0001
++  contrastive: 0.1
++
++methods: [vinn_rbf]
+diff --git a/models/retrieval_policy.py b/models/retrieval_policy.py
+index a313947..d5e2d19 100644
+--- a/models/retrieval_policy.py
++++ b/models/retrieval_policy.py
+@@ -107,11 +107,14 @@ class RetrievalPolicy(nn.Module):
+             reference = weighted_pose_mean(trajectories, retrieved.weights)
+         reference = project_pose_trajectory(reference)
+         if self.pose_parameterization == "orientation_delta":
++            if self.residual is None:
++                return PolicyOutput(prediction=reference, reference=reference,
++                                    raw_residual=reference.new_zeros(reference.shape[:-1] + (POSE_DELTA_DIM,)),
++                                    **({} if retrieved is None else vars(retrieved)))
+             if not isinstance(observations, dict):
+                 raise ValueError("Orientation delta requires structured observations")
+-            delta = (self.residual(embedding) if self.residual_input == "observation" and self.residual is not None
+-                     else self.residual(embedding, reference) if self.residual is not None
+-                     else reference.new_zeros(reference.shape[:-1] + (POSE_DELTA_DIM,)))
++            delta = (self.residual(embedding) if self.residual_input == "observation"
++                     else self.residual(embedding, reference))
+             reference_values = reference.reshape(*reference.shape[:-1], 2, 7)
+             positions = reference_values[..., :3].reshape(reference.shape[0], reference.shape[1], 6)
+             positions = positions + delta[..., (0, 1, 2, 6, 7, 8)]
+diff --git a/scripts/train.py b/scripts/train.py
+index 15075ca..f1b541a 100644
+--- a/scripts/train.py
++++ b/scripts/train.py
+@@ -1,4 +1,4 @@
+-"""Train any subset of the six methods from one YAML configuration."""
++"""Train any subset of the registered methods from one YAML configuration."""
+ import argparse
+ import json
+ from pathlib import Path
+@@ -43,6 +43,7 @@ def main() -> None:
+     parser.add_argument("--config", required=True)
+     parser.add_argument("--output", required=True)
+     parser.add_argument("--methods", nargs="+")
++    parser.add_argument("--seed", type=int)
+     parser.add_argument("--epochs", type=int)
+     parser.add_argument("--early-stopping-patience", type=int)
+     parser.add_argument("--early-stopping-min-delta", type=float)
+@@ -51,6 +52,8 @@ def main() -> None:
+     config = load_config(args.config)
+     if args.methods:
+         config["methods"] = args.methods
++    if args.seed is not None:
++        config["seed"] = args.seed
+     if args.epochs is not None:
+         config["epochs"] = args.epochs
+     if args.early_stopping_patience is not None or args.early_stopping_min_delta is not None or args.disable_early_stopping:
+diff --git a/tests/test_models.py b/tests/test_models.py
+index dfd829c..021b93d 100644
+--- a/tests/test_models.py
++++ b/tests/test_models.py
+@@ -321,6 +321,15 @@ class RetrievalTests(unittest.TestCase):
+         result = retrieval(observations, ["g2", "g2"]).prediction
+         self.assertEqual(tuple(result.shape), (2, 8, 14))
+         self.assertTrue(torch.isfinite(result).all())
++        reference_only = RetrievalPolicy(encoder, memory, 8, 14, mode="cartesian", k=1,
++                                         embedding_dim=8, hidden_dim=16, residual=False,
++                                         retrieval_mode="rbf", retrieval_bandwidth=0.15,
++                                         pose_parameterization="orientation_delta")
++        output = reference_only(observations, ["g2", "g2"])
++        self.assertIsNone(reference_only.residual)
++        torch.testing.assert_close(output.prediction, output.reference)
++        torch.testing.assert_close(output.prediction[..., 3:7],
++                                   pose[None, None, 3:7].expand(2, 8, 4))
+ 
+ 
+ if __name__ == "__main__":
+diff --git a/tests/test_training.py b/tests/test_training.py
+index 7c21521..db0ade1 100644
+--- a/tests/test_training.py
++++ b/tests/test_training.py
+@@ -48,16 +48,18 @@ class TrainingTests(unittest.TestCase):
+                 else:
+                     self.assertEqual(first[key], second[key])
+ 
+-    def test_all_six_methods_train_and_evaluate(self) -> None:
++    def test_all_registered_methods_train_and_evaluate(self) -> None:
+         encoder = trainer.pretrain_encoder(self.normalized, self.config, self.device)
+         autoencoder = trainer.train_autoencoder(self.normalized, self.config, self.device)
+         self.assertTrue(all(not p.requires_grad for p in autoencoder.parameters()))
+         for method in trainer.METHODS:
+             with self.subTest(method=method):
++                config = ({**self.config, "retrieval_mode": "rbf", "retrieval_bandwidth": 0.15}
++                          if method == "vinn_rbf" else self.config)
+                 model = trainer.make_policy(method, copy.deepcopy(encoder), self.normalized,
+-                                            self.config, copy.deepcopy(autoencoder)
++                                            config, copy.deepcopy(autoencoder)
+                                             if method == "latent_residual" else None)
+-                history = trainer.train_policy(model, method, self.normalized, self.config, self.device)
++                history = trainer.train_policy(model, method, self.normalized, config, self.device)
+                 self.assertGreaterEqual(len(history), 1)
+                 metrics = trainer.evaluate_policy(model, self.normalized.test, self.mean,
+                                                   self.std, self.device, batch_size=2)
+@@ -69,6 +71,19 @@ class TrainingTests(unittest.TestCase):
+                     self.assertEqual(set(model.memory.ids), {d.id for d in self.split.train})
+                     self.assertFalse(set(model.memory.ids) & {d.id for d in self.split.test})
+ 
++    def test_vinn_rbf_requires_rbf_and_has_no_residual(self) -> None:
++        encoder = trainer.make_encoder(self.config, self.normalized)
++        with self.assertRaisesRegex(ValueError, "vinn_rbf requires retrieval_mode: rbf"):
++            trainer.make_policy("vinn_rbf", encoder, self.normalized, self.config)
++        config = {**self.config, "retrieval_mode": "rbf", "retrieval_bandwidth": 0.15}
++        model = trainer.make_policy("vinn_rbf", trainer.make_encoder(config, self.normalized),
++                                    self.normalized, config)
++        self.assertIsNone(model.residual)
++        self.assertEqual(model.mode, "cartesian")
++        self.assertEqual(model.retrieval_mode, "rbf")
++        self.assertEqual(model.retriever.k, 3)
++        self.assertAlmostEqual(float(model.retriever.bandwidth), 0.15)
++
+     def test_frozen_encoder_parameters_unchanged(self) -> None:
+         encoder = trainer.pretrain_encoder(self.normalized, self.config, self.device)
+         model = trainer.make_policy("cartesian_residual", encoder, self.normalized, self.config)
+diff --git a/training/trainer.py b/training/trainer.py
+index e300a63..d2396cf 100644
+--- a/training/trainer.py
++++ b/training/trainer.py
+@@ -1,4 +1,4 @@
+-"""Shared, episode-separated training for all six policy methods."""
++"""Shared, episode-separated training for all policy methods."""
+ from __future__ import annotations
+ 
+ import copy
+@@ -25,7 +25,7 @@ from dom_retrieval.models.history import HistoryEncoder, preserve_frozen_backbon
+ from dom_retrieval.training.losses import LossWeights, contrastive_retrieval_loss, trajectory_loss
+ from dom_retrieval.poses import is_pose_trajectory, pose_discrepancy
+ 
+-METHODS = ("direct", "nearest", "nearest_residual", "cartesian", "cartesian_residual", "latent_residual")
++METHODS = ("direct", "nearest", "nearest_residual", "cartesian", "vinn_rbf", "cartesian_residual", "latent_residual")
+ ALL_METHODS = METHODS + ("transformer_direct", "transformer_residual")
+ 
+ 
+@@ -121,6 +121,8 @@ def make_policy(method: str, encoder: nn.Module, split: Split, config: dict[str,
+     from dom_retrieval.models.retrieval_policy import RetrievalPolicy
+     if method not in ALL_METHODS:
+         raise ValueError(f"Unknown method {method}; choose from {ALL_METHODS}")
++    if method == "vinn_rbf" and config.get("retrieval_mode", "cosine") != "rbf":
++        raise ValueError("vinn_rbf requires retrieval_mode: rbf")
+     horizon, action_dim = split.train[0].trajectory.shape
+     pose_parameterization = str(config.get("pose_parameterization", "absolute"))
+     if pose_parameterization not in ("absolute", "orientation_delta"):
+-- 
+2.34.1
+
