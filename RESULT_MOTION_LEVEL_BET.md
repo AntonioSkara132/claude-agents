@@ -1,4 +1,13 @@
-# Motion-level BeT: core implementation built and smoke-tested; first real results show the codebook mechanism isn't finding structure
+# Motion-level BeT: core implementation built (hard, then soft RBF-weighted); neither finds real structure in the codebook
+
+**Note: the sections below describe the original hard-argmax design as first built. It was
+superseded same-day by a soft RBF-weighted variant (see "Follow-up" section below) --
+`models/motion_bet.py`'s `MotionBeTPolicy` now implements the soft version; the classifier
+head, `use_predicted_codeword_for_residual` config field and oracle-teacher-forcing behavior
+described immediately below no longer exist in the current code. Left as-is for the
+implementation history/reasoning trail rather than rewritten, since the "why" reasoning
+(architecture choice, gradient-flow verification, etc.) is still accurate for how the method
+was arrived at.**
 
 Per `REQUEST_MOTION_LEVEL_BET.md`. **This is a partial report, by explicit user instruction** ("just build it for now, we will talk about tests later") — it covers the core implementation, a minimal correctness check, and two real single-seed training runs with codebook diagnostics. It does **not** cover the full spec: no baseline comparison matrix, no K∈{8,16,32} screening (K=16 and K=64 tried instead, ad hoc), no multi-seed runs, no chained-anchor re-run, no literature positioning, no coherence/two-tool-sync metrics, and none of the spec's required unit tests beyond the existing suite passing unmodified. Treat this as a checkpoint, not the deliverable the original request asked for.
 
@@ -59,11 +68,55 @@ The residual head is doing nearly all of the real work in both configurations: o
 - Does NOT show: whether motion-level BeT can work well here at all, since only two K values were tried, only one seed, oracle teacher-forcing wasn't compared against predicted-codeword training, and the more fundamental hypothesis (hard k-means clustering may be the wrong mechanism for this motion distribution, versus a soft/weighted combination closer to how RBF outperformed cosine similarity earlier in this investigation) hasn't been tested at all.
 - Does NOT show: closed-loop behavior, chained-anchor robustness, coherence/synchronization metrics, or anything from the required baseline comparison matrix -- none of that has been run.
 
+## Follow-up: soft RBF-weighted codeword blend (2026-09-21, same day)
+
+Tested the recommended next step directly: replaced hard `argmax` codeword selection with
+a soft RBF-weighted combination of all K codewords, mirroring `RBFTopK`'s exact convention
+(`models/retrieval.py`) -- query and codeword-key embeddings L2-normalized, weights =
+`softmax(-||q-k||^2 / (2*bandwidth^2))`, `bandwidth=0.15` matching the value that helped in
+the original cosine->RBF retrieval change. `soft_codeword = sum_k weights[k] * codebook[k]`
+replaces the single selected codeword; the residual head conditions on this blend instead.
+This removed the oracle-vs-predicted distinction entirely (no more `argmax`, so the whole
+path is differentiable end to end without needing target inside `forward()`) -- simplified
+`MotionBeTPolicy` by dropping the `classifier` head, `use_predicted_codeword_for_residual`,
+and the `wants_target` teacher-forcing plumbing (that hook is left in `train_policy`,
+harmless and unused, in case a future variant needs it again).
+
+Hit and fixed a real bug in the process: populating `PolicyOutput.weights` alone crashes
+`evaluate_policy`'s qualitative-export path, which requires `indices`+`weights` together and,
+if `indices` is set, a retrieval-style `model.memory` exposing real per-item observations for
+an embedding plot -- something synthetic k-means codewords fundamentally don't have. Rather
+than fabricate fake observations, backed out `weights`/`indices`/`scores`/`memory` entirely,
+keeping only `logits`/`codebook` (load-bearing for the classification loss). Verified the fix
+with a dedicated smoke test that exercises the same `output_dir`-set code path
+`run_experiment` uses (the original smoke test hadn't caught this since it skipped
+`output_dir`). Confirmed with the full 104-test suite passing throughout.
+
+### Result: soft doesn't rescue it
+
+| variant | raw | orientation | convergence |
+|---|---|---|---|
+| hard argmax, K=16 | 29.73mm | 6.10deg | 65 epochs, best=35 |
+| hard argmax, K=64 | 31.09mm | 6.86deg | 43 epochs, best=13 |
+| soft RBF, K=16 | 30.89mm | 6.16deg | 72 epochs, best=42 |
+| soft RBF, K=32 | 29.65mm | 6.04deg | 75 epochs, best=45 |
+
+All four converged properly (none of these are undertrained artifacts) and land in the same
+tight 29.6-31.1mm / 6.0-6.9deg band -- essentially indistinguishable on a single seed. Unlike
+the original retrieval investigation, where cosine->RBF was a real, repeatable improvement,
+**the soft/hard mechanism change makes no meaningful difference here.** That sharpens the
+earlier diagnosis rather than contradicting it: the bottleneck was never really "hard
+selection is too rigid" (RBF's fix for cosine retrieval) -- it's that the k-means codebook
+over this relative-shape representation doesn't carry much discriminative structure for this
+motion distribution in the first place, so blending softly instead of picking hard doesn't
+matter much when there isn't a lot of real signal being selected among either way. The
+residual head remains the thing doing essentially all of the work in every variant tried.
+
 ## Recommended next step
 
-Before sweeping K further (K=8, K=32 per the original screening range) -- unlikely to change the conclusion given the flat trend already observed across two points spanning 4x -- the more informative next experiment is probably testing whether a **soft/weighted combination of codewords** (RBF-style, weighting all K templates by similarity rather than hard-selecting one) does better than hard classification, mirroring the exact mechanism change that helped earlier in this investigation (cosine -> RBF retrieval). That would distinguish "hard selection is the wrong mechanism for this data" from "the relative-shape representation itself doesn't cluster well," which the current results can't cleanly separate.
+The two most obvious levers (K, hard-vs-soft selection) have both now been tried and both land in the same place. If this method is still worth pursuing, the more fundamental question is the **representation itself** -- whether relative-to-start-waypoint k-means clustering can ever find real structure in this motion distribution, versus e.g. a learned (not k-means) discrete or continuous motion-embedding space, or accepting that this data may just not have strong discrete multi-modal structure to exploit and a pure regression approach (`direct`, already at 25.87mm) is the more natural fit. Multi-seed confirmation of the current numbers would also be needed before treating any of these single-seed results as settled.
 
-Configs and checkpoints: `/workspace/runs/motion_bet/cond_motion_bet_k16_seed27{.yaml,.log,_out/}`, `/workspace/runs/motion_bet/cond_motion_bet_k64_seed27{.yaml,.log,_out/}`.
+Configs and checkpoints: `/workspace/runs/motion_bet/cond_motion_bet_k16_seed27{.yaml,.log,_out/}` (hard, K=16), `cond_motion_bet_k64_seed27{...}` (hard, K=64), `cond_motion_bet_soft_k16_seed27{...}`, `cond_motion_bet_soft_k32_seed27{...}`.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
