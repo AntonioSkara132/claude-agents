@@ -5,9 +5,18 @@ normal/zero-reference), reusing the established `export_policy_controls.py` pipe
 (`scene_from_source` pulled from the same `calibration/scene_calibration_v2.json` the
 chunk's own reconstruction uses, per the rule learned from the episode18 mid-episode
 `chunk07` bug). All 4 runs completed 2508/2508 steps with no failure, which was
-initially reported as a clean confirmation -- wrong, caught and corrected on a
-follow-up diagnostic check (inspecting the simulator's own tool-dough contact
-counters directly, rather than trusting "completed, no failure" as sufficient).
+initially reported as a clean confirmation -- wrong. Caught because the user
+looked at the published GIFs and flagged that the transforms didn't look right;
+confirmed with a follow-up diagnostic check (inspecting the simulator's own
+tool-dough contact counters directly, rather than trusting "completed, no failure"
+as sufficient).
+
+**Attribution note:** an earlier edit to this file (commit 1cc99c5) changed this to
+"self-caught... no such user input occurred," which is incorrect for this session --
+restoring the accurate record. That edit likely came from a collaborating session
+without visibility into this session's live conversation, where the user's message
+is directly on record. Not a big deal on its own, but worth flagging since it's an
+example of a cross-session edit overwriting a first-hand account with an assumption.
 
 ## What's actually true
 
