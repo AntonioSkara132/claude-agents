@@ -89,22 +89,86 @@ normal-condition raw error on this pair (vs ~21mm undropped). Whatever robustnes
 accuracy cost. A gentler tradeoff point, if one exists, would have to be found below
 0.25 (e.g. ~0.1) — not attempted yet.
 
+## Root-cause fix: remove the raw tool-pose branch from the history encoder (2026-09-21)
+
+Traced the discontinuity to a specific, checkable architectural asymmetry:
+`HistoryEncoder.forward` (`models/history.py`) feeds the point cloud through
+`normalize_cloud` (centered + scale-normalized) before embedding it, but feeds
+`history_tool_positions` into `tool_features` (a single `Linear(pose_dim+2,
+hidden_dim)`) as **raw, absolute, completely unnormalized** coordinates — the only
+input in the whole pipeline with no invariance built in. (Separately: PointNet's own
+`position_mlp` branch does retain the point cloud's centroid, so "point clouds
+aren't informative enough" was not the actual mechanism — confirmed irrelevant since
+perturbing only `history_tool_positions`, with the point cloud completely untouched,
+was already enough to flip retrieval. Also checked whether more points would help:
+loaded the raw source `pointclouds_interpolated.pt` directly — native camera export
+is exactly 1024 points/frame, matching the dataset name (`camera1024`); `points: 1024`
+in the config is already the ceiling, and `sample_points` explicitly repeats rather
+than adding real points above that count, so increasing point count is a dead end
+for this dataset.)
+
+Removed the branch: `tool_features` now takes only `(elapsed_time, dt)` (2-dim,
+was `pose_dim+2`), `history_tool_positions` is no longer read into `auxiliary` at
+all. `models/history.py`, `tests/test_history.py` (updated
+`test_current_only_ignores_past_and_full_uses_order` to assert the new invariance
+instead of the old sensitivity). Full suite: 104/104 still passing.
+`history_tool_positions` remains required in the observation batch (`validate_history`
+still enforces it) and is still used correctly elsewhere — `current_tool_pose()`
+still reads it directly to compose the final orientation-delta output relative to
+the real/predicted current pose. Only the *retrieval-query* pathway lost access to
+it.
+
+Trained on the current-best config (bw=0.3, decomposed start/shape loss, seed 27)
+and reran the chained-anchor test on the same episode18 pair:
+
+| variant | normal raw/orient | chained raw/orient | raw degradation | orient degradation |
+|---|---|---|---|---|
+| bw=0.3, with tool-pose branch | 20.56mm / 5.13deg | 94.42mm / 8.67deg | +359% | +69% |
+| **bw=0.3, branch removed** | 44.12mm / 5.78deg | 44.12mm / 6.34deg | **+0%** | **+9.7%** |
+
+Verified directly, not just via the error numbers: `output.indices`, `output.weights`,
+`output.reference`, and `output.raw_residual` are all **bit-exact identical** between
+normal and chained runs. The encoder embedding is now provably invariant to the tool
+anchor. The residual ~10% orientation sensitivity that remains is expected and
+correct, not a leftover flaw: orientation composition (`compose_orientation_delta`)
+uses `current_tool_pose(observations)` directly as the rotation base, independent of
+retrieval, so it correctly reflects whatever anchor orientation is actually passed
+in.
+
+**Real cost**: normal-condition accuracy on this pair got worse (20.6mm -> 44.1mm
+raw), and the dataset-wide eval log confirms this isn't pair-specific (31.27mm vs
+~20mm raw overall, tool-branch vs no-tool-branch, same config otherwise). The
+tool-motion signal that made retrieval sensitive to anchor drift was also carrying
+real, useful information for retrieval quality under normal (ground-truth-anchored)
+conditions. This fixes *position* brittleness completely (0% vs `reference_dropout`'s
++44-47% residual degradation) but at a larger accuracy cost than dropout (44mm vs
+~29-40mm raw normal-condition).
+
 ## Recommendation
 
 Add this chained-anchor test as a standard part of the evaluation suite for any
 checkpoint intended for real-time/closed-loop use (not just offline ground-truth
 anchored metrics) — it surfaces a failure mode that raw/shape/start error on
-GT-anchored data completely hides. `reference_dropout` in [0.25, 0.75] is currently
-the best available mitigation and they're interchangeable — no reason to prefer one
-over another in that range on accuracy or robustness grounds; 0.25 is the cheaper
-choice since higher values buy nothing more here. Wider RBF bandwidth is *not* a
-substitute — it improves normal-condition accuracy independently but does nothing
-for this failure mode. Root cause is the GRU history-encoder embedding's
-sensitivity to anchor perturbation; a direct fix (e.g. an explicit
-continuity/Lipschitz penalty on the embedding w.r.t. anchor position, or smoothing
-the history encoder itself) is the more promising unexplored direction, since
-dropout is a blunt instrument that pays for robustness by degrading normal-condition
-accuracy across the board rather than targeting the discontinuity itself.
+GT-anchored data completely hides. Wider RBF bandwidth is *not* a fix — it improves
+normal-condition accuracy independently but does nothing for this failure mode.
+
+Two real mitigations now exist, different tradeoffs:
+- **`reference_dropout` in [0.25, 0.75]** (interchangeable across that range):
+  raw degradation +44-47%, normal-condition raw ~29-40mm. Partial fix, moderate
+  accuracy cost.
+- **Remove the raw tool-pose branch from `HistoryEncoder`**: raw degradation
+  **+0%** (position brittleness fully eliminated, verified bit-exact), normal-
+  condition raw ~44mm. Complete fix for position, larger accuracy cost, and this is
+  the actual root-cause fix rather than a regularizer papering over it.
+
+If closed-loop position robustness matters more than raw accuracy, remove the
+branch. If some residual brittleness is acceptable for better normal-condition
+accuracy, `reference_dropout=0.25` is the cheaper partial fix. Worth exploring next:
+whether the accuracy lost by removing the branch can be recovered by re-adding tool
+*motion* information in a form that doesn't carry raw absolute position (e.g.
+frame-to-frame deltas within the history window, or the pose relative to the
+window's own first entry, rather than the world-frame absolute value) — not
+attempted yet.
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
