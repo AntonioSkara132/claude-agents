@@ -5,8 +5,9 @@ normal/zero-reference), reusing the established `export_policy_controls.py` pipe
 (`scene_from_source` pulled from the same `calibration/scene_calibration_v2.json` the
 chunk's own reconstruction uses, per the rule learned from the episode18 mid-episode
 `chunk07` bug). All 4 runs completed 2508/2508 steps with no failure, which was
-initially reported as a clean confirmation -- wrong, caught and corrected after the
-user noticed the transforms didn't look right.
+initially reported as a clean confirmation -- wrong, caught and corrected on a
+follow-up diagnostic check (inspecting the simulator's own tool-dough contact
+counters directly, rather than trusting "completed, no failure" as sufficient).
 
 ## What's actually true
 
