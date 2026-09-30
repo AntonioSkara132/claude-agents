@@ -103,10 +103,40 @@ most error is a shared ~2 cm constant start offset carried through the whole str
   poses, and contact-rich backward passes are unqualified (334 steps without contact verified; CUDA failures
   near step 9,770). Gradient-based latent optimization would need a tool-pose adjoint first.
 
-## In progress
+## Follow-up results (same day)
 
-- Start variants (`d5b214a`, 3 seeds each, `/workspace/runs/cvae_start/`): `path_start_from_motion` (start
-  head reads the generated motion, so each sample gets its own start) and `cvae.joint_start` (the CVAE
-  generates the dough-relative start with the stroke from one latent code).
-- Next: multi-chunk (13 calibrated chunks) simulator check of sampling-based selection, as data for an outcome
-  surrogate.
+All 3 seeds (7/17/27), same test splits; differences under ~1 mm are treated as ties (run-to-run noise ~±1 mm,
+and these splits were also used for earlier decisions, so there is no untouched test set yet).
+
+| Model | Measured: start / shape / raw | Pose masked raw | Chained masked / fed own pose |
+|---|---|---|---|
+| CVAE + conditional prior (previous best) | 11.6 / 21.4 / 22.3 mm | 30.4 mm | 28.9 / 28.7 mm |
+| + `cvae.joint_start` (start decoded with the stroke) | 12.5 / 20.7 / 22.1 mm | 28.4 mm | 27.3 / 31.4 mm |
+| + joint start + `fixed_scale_m: 0.05` (**new best config**, `configs/deformpath_cvae_best.yaml`) | 12.2 / 20.9 / 22.2 mm | 28.6 mm | 27.1 / 28.6 mm |
+| + `path_start_from_motion` (separate start head reads the stroke) | 16.4 / 22.4 / 24.3 mm | 28.5 mm | 26.9 / 31.4 mm |
+| Chamfer nearest neighbour, no network (k = 5) | start = measured pose / 28.6 / 28.6 mm | 31.1 mm | — |
+| Dataset-mean stroke | — / 27.5 / 27.5 mm | — | — |
+
+- **Joint start** is the only change that improves the pose-masked mode on every seed (~2 mm); measured pose ties.
+  Samples now get their own starts (~5 mm apart) and more stroke variety (9.1 vs 6.7 mm), but best-of-16 does not
+  improve. Start from the stroke costs 4–5 mm of measured start: dropped.
+- **Fixed-scale clouds** (dough size visible to the PointNet): tied on every metric (±0.5 mm, no consistent
+  direction). The user chose to keep it (size is a meaningful quantity for the task).
+- **Chamfer nearest neighbour** by start-cloud similarity is worse than the dataset-mean stroke (k = 1: 39 mm). The
+  learned models (~21 mm) do real work beyond geometric similarity; without a pose, though, the learned start is
+  no better than a neighbour's start offset from the dough centroid (24.8 vs 24.5 mm).
+- **Prior coverage** (16 samples per test segment, seed 27): samples vary one family of loop strokes; atypical
+  recorded strokes (long sweeps, reversed direction, bigger loops) never appear. Pose masked, a sample starts within
+  1 cm of the recorded start in only 10% of segments. With a measured pose the start is still ~12–14 mm off because
+  training adds ±2 cm pose noise; placing the start at the measured pose is the untested fix.
+- **Adversarial review** of the programme: no untouched test set, sub-mm differences reported as rankings, pre-fix
+  "no gain" verdicts not re-run, simulation on one non-held-out segment. Proposed: lock an evaluation protocol
+  (frozen held-out episodes, paired per-segment comparisons, pose-masked/chained as primary) and a multi-chunk
+  simulator benchmark before further variants.
+
+Docs: `dom_retrieval/docs/RUNNING.md` 7.1 (`37515d6`); analysis scripts in `dom_retrieval/scripts/analysis/`.
+
+## Next
+
+- Start at the measured pose when available (no retraining); prior temperature / lower KL for coverage.
+- Locked evaluation protocol and multi-chunk (13 calibrated chunks) simulator benchmark.
