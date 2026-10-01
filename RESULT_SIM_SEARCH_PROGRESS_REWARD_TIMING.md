@@ -93,15 +93,45 @@ Also: Gaussian-NLL reconstruction with a learned per-waypoint variance (`reconst
 `beta_nll`) ties MSE on accuracy and is worse when the model is fed its own pose (31.9 / 30.9 vs 28.6 mm);
 sigma rises ~7x along the stroke. Kept off.
 
+## 4. Prior-sampling data collection round (`rl/collect_prior_samples.py`, `rl/surrogate_q.py`, `rl/awr_prior.py`)
+
+Reward: a footprint-only progress model (vertical axis dropped; held-out pair accuracy 82/87/84%). In the
+simulator the human's stroke raises it on 9/13 chunks, the same rate as on real clouds, and it does not
+favour piled-up dough: over 845 sampled strokes, Spearman(Δp, final height) = -0.17, Spearman(Δp, footprint
+radius) = -0.78, the five best strokes per dough end lower than the policy's on 8/10 chunks. Its correlation
+with chamfer-to-the-human is ~0 (a goal-directed reward, not an imitation one).
+
+Collection: 13 doughs x (policy + 32 prior samples at T=1 + 32 at T=2) = 845 simulated strokes (~20 min).
+The policy's stroke scores positive progress on all 13 (hold-still ~0); best-of-64 beats the policy on
+progress 13/13 and on chamfer 10/13; per dough 9-83% of samples beat the policy. Headroom exists.
+
+Leave-one-dough-out tests of whether that headroom is predictable from the dough:
+
+| held-out dough, no search | policy | Q-surrogate pick | AWR-tuned prior | constant top-8 offset | best-of-64 (simulator) |
+|---|---|---|---|---|---|
+| mean Δp | +0.177 | +0.19 | +0.178 | +0.159 | +0.287 |
+| beats the policy on Δp | - | 7/13 | 8/13 | 3/13 | 13/13 |
+
+- Q(c, z) ranks a held-out dough's samples with Spearman 0.34; Q(z) without the dough does the same
+  (0.36): what is learnable from 13 states is a dough-independent direction, not a state-dependent choice.
+- AWR fine-tuning of the prior (advantage-weighted NLL + KL leash; with KL weight 1.0 the prior barely moves,
+  with 0.1 it moves ~1 latent unit) ties the policy either way.
+
+Conclusion of the round: every piece works in isolation (search finds better strokes; the reward is
+state-based and not hacked; samples contain the headroom), but a state -> stroke improvement does not
+transfer from 13 states of one dough. The missing ingredient is states, not samples per state: hundreds of
+dough states (roll the simulator forward with chosen strokes) before fine-tuning can be expected to
+generalize. Secondary: Δp over a 0.5 s window is small (±0.05-0.3) against ~±0.4 mm simulator noise;
+longer strokes or multi-stroke returns would give a cleaner signal.
+
 ## What to do next
 
-1. A state-based reward that works on particles, independent of rendering: a geometric "ball-ness"
-   (e.g. compactness / distance to a sphere of the dough's volume) evaluated directly on the final
-   particles. Then repeat the sweep + leave-one-out test with it; only a state-based reward can make the
-   searched strokes learnable.
-2. Simulator height fidelity (the 7 mm pile-up) before trusting any learned cloud-based reward in sim.
-3. Many more states: roll the simulator forward with chosen strokes to generate dough states beyond the
-   13 chunks; distillation needs hundreds of states, not twelve.
+1. Many more states: roll the simulator forward with sampled/chosen strokes (3-5 strokes per chain from
+   each chunk's dough) to generate hundreds of dough states, re-collect, and repeat the Q / AWR leave-out
+   tests. This is the one lever not yet pulled, and the one the round points at.
+2. Simulator height fidelity (the 7 mm pile-up): needed before a height-aware reward or long chains.
+3. A geometric ball-ness term (compactness incl. height) alongside the footprint progress reward, so
+   multi-stroke optimization cannot drift toward heaps the 2D model cannot see.
 
-Code: dom_retrieval `4229784`, `08afead` (rl/, duration head). Runs: `/workspace/runs/cma_multichunk_v2/`,
+Code: dom_retrieval `4229784` .. `1a9557b` and later (rl/, duration head). Runs: `/workspace/runs/cma_multichunk_v2/`,
 `/workspace/runs/progress_reward/`, `/workspace/runs/cvae_duration/`.
