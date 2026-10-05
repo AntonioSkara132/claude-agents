@@ -1,0 +1,28 @@
+{
+  "checkpoint": "runs/gen_anchor/act_seed17_out/act/checkpoint.pt",
+  "test_segments": 147,
+  "pose_measured": {
+    "start_mm": 20.95300342419836,
+    "shape_mm": 26.289268355083248,
+    "raw_mm": 28.082410621114782,
+    "orientation_deg": 7.133267491294277,
+    "motion_size": 0.8401990547084043,
+    "shape_spread_pred_mm": 7.297687692519082,
+    "shape_spread_true_mm": 18.985449380811335
+  },
+  "pose_masked": {
+    "start_mm": 27.035215843793427,
+    "shape_mm": 27.636296950209186,
+    "raw_mm": 30.469834458843764,
+    "orientation_deg": 7.30860482971765,
+    "motion_size": 0.8584209591060543,
+    "shape_spread_pred_mm": 4.953105655258404,
+    "shape_spread_true_mm": 18.985449380811335
+  },
+  "chained": {
+    "segments": 138,
+    "raw_mm_measured": 27.786844201025367,
+    "raw_mm_fed_back": 27.40683493284471,
+    "raw_mm_masked": 28.4267149584354
+  }
+}

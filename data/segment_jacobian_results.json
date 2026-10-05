@@ -1,0 +1,38 @@
+{
+ "validation": {
+  "segments": 41,
+  "latent_mse": {
+   "persistence": 0.7556780576705933,
+   "mean_delta": 0.7284913659095764,
+   "ridge_constant_jacobian": 0.41745638847351074,
+   "jacobian": 0.4883010983467102
+  },
+  "identification": {
+   "jacobian_mean_rank": 4.951219512195122,
+   "jacobian_top1": 0.3170731707317073,
+   "jacobian_top3": 0.5121951219512195,
+   "ridge_mean_rank": 4.121951219512195,
+   "ridge_top1": 0.34146341463414637,
+   "chance_mean_rank": 8.5,
+   "chance_top1": 0.0625
+  }
+ },
+ "test": {
+  "segments": 119,
+  "latent_mse": {
+   "persistence": 1.2477298974990845,
+   "mean_delta": 1.2280744314193726,
+   "ridge_constant_jacobian": 0.6505258083343506,
+   "jacobian": 0.7689169049263
+  },
+  "identification": {
+   "jacobian_mean_rank": 5.882352941176471,
+   "jacobian_top1": 0.15966386554621848,
+   "jacobian_top3": 0.3949579831932773,
+   "ridge_mean_rank": 4.890756302521009,
+   "ridge_top1": 0.226890756302521,
+   "chance_mean_rank": 8.5,
+   "chance_top1": 0.0625
+  }
+ }
+}

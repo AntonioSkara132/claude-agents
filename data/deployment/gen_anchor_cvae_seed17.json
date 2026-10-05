@@ -1,0 +1,28 @@
+{
+  "checkpoint": "runs/gen_anchor/cvae_seed17_out/cvae/checkpoint.pt",
+  "test_segments": 147,
+  "pose_measured": {
+    "start_mm": 18.39839970740493,
+    "shape_mm": 25.541945581570396,
+    "raw_mm": 26.155679678812387,
+    "orientation_deg": 6.39165986429432,
+    "motion_size": 0.8457731760362983,
+    "shape_spread_pred_mm": 6.413668706301741,
+    "shape_spread_true_mm": 18.985449380811335
+  },
+  "pose_masked": {
+    "start_mm": 25.120424018016564,
+    "shape_mm": 27.083593383453653,
+    "raw_mm": 28.818012331072925,
+    "orientation_deg": 6.913538192534972,
+    "motion_size": 0.7921040211674946,
+    "shape_spread_pred_mm": 5.277564654978428,
+    "shape_spread_true_mm": 18.985449380811335
+  },
+  "chained": {
+    "segments": 138,
+    "raw_mm_measured": 25.040548787679832,
+    "raw_mm_fed_back": 27.503970281057402,
+    "raw_mm_masked": 27.286781463331486
+  }
+}

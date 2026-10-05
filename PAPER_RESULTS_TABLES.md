@@ -1,7 +1,7 @@
 # Paper Results Tables
 
 **Status:** fact-checking source for the DeformPath paper  
-**Repository state used:** `6b31158` on 2026-10-05  
+**Repository state used:** `6b31158` on 2026-10-05; raw per-seed and simulator outputs committed under `data/` (regenerate every number with `python data/make_tables.py`; checkpoint hashes in `data/checkpoint_sha256.txt`)  
 **Rule:** do not rank differences below approximately 1 mm; the current results are development-test estimates, not an untouched final evaluation.
 
 This file collects the tables currently intended for the paper. Every number must remain traceable to a committed result report. Agents updating this file should preserve the protocol notes and mark any value that is not directly supported by a repository report.
@@ -25,6 +25,8 @@ Canonical source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITION
 
 ## Table 1: Offline policy comparison
 
+Corrections 2026-10-05 (from the raw per-seed outputs in `data/deployment/`): ACT row now entirely from the min-150-epoch run; the fixed-prior CVAE row from the smoothed-early-stopping run (the earlier 23.8 / 29.7 mixed two runs); the selected CVAE's orientation and motion size filled in; in Table 2 the selected CVAE's chained-measured value was the non-chained raw error (22.2) and is now 21.6; Table 3's hold-still mean was misreported as 3.65 (the 13 values average 3.57, as in Table 4).
+
 Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md), main comparison at lines 15--21 and selected-configuration/Chamfer follow-up at lines 108--127.
 
 | Method | Start error [mm] ↓ | Shape error [mm] ↓ | Raw error [mm] ↓ | Orientation [deg] ↓ | Motion size [%] | Pose-masked raw [mm] ↓ | Seeds |
@@ -32,11 +34,11 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 | Dataset-mean stroke | — | 27.5 | 27.5 | — | — | — | 3 |
 | Chamfer NN, k=5 | measured | 28.6 | 28.6 | — | — | 31.1 | 3 |
 | Retrieval + dough-relative anchor | 12.9 | 21.7 | 22.4 | 5.9 | 85 | 31.1 | 3 |
-| ACT, anchored, minimum 150 epochs | 21.3 | 26.1 | 28.8 | 7.4 | 86 | 30.9 | 3 |
+| ACT, anchored, minimum 150 epochs | 21.3 | 26.0 | 28.9 | 7.4 | 85 | 30.9 | 3 |
 | Diffusion Policy | 18.2 | 28.6 | 31.8 | 8.5 | 70 | 35.4 | 1 |
-| CVAE, fixed prior | 14.9 | 23.8 | 25.2 | 6.1 | 89 | 29.7 | 3 |
+| CVAE, fixed prior (smoothed early stopping) | 14.9 | 24.5 | 25.2 | 6.1 | 89 | 30.0 | 3 |
 | CVAE, conditional prior | 11.6 | 21.4 | 22.3 | 5.8 | 93 | 30.4 | 3 |
-| Selected CVAE, joint start + fixed 5 cm cloud scale | 12.2 | 20.9 | 22.2 | not reported | not reported | 28.6 | 3 |
+| Selected CVAE, joint start + fixed 5 cm cloud scale | 12.2 | 20.9 | 22.2 | 5.6 | 90 | 28.6 | 3 |
 
 ### Interpretation
 
@@ -54,11 +56,11 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 | Method | Pose-masked raw [mm] ↓ | Chained measured [mm] ↓ | Chained masked [mm] ↓ | Chained fed-own-pose [mm] ↓ |
 |---|---:|---:|---:|---:|
 | Retrieval + dough-relative anchor | 31.1 | 21.8 | 30.0 | 38.3 |
-| ACT | 30.9 | not reported | 28.6 | 28.3 |
+| ACT, anchored, minimum 150 epochs | 30.9 | 28.2 | 28.7 | 28.7 |
 | Diffusion Policy | 35.4 | not reported | 34.1 | not reported |
-| CVAE, fixed prior | 29.7 | not reported | 28.5 | 29.2 |
+| CVAE, fixed prior (smoothed early stopping) | 30.0 | 24.1 | 28.5 | 29.2 |
 | CVAE, conditional prior | 30.4 | 21.5 | 28.9 | 28.7 |
-| Selected CVAE, joint start + fixed 5 cm cloud scale | 28.6 | 22.2 | 27.1 | 28.6 |
+| Selected CVAE, joint start + fixed 5 cm cloud scale | 28.6 | 21.6 | 27.1 | 28.6 |
 
 ### Interpretation
 
@@ -74,23 +76,23 @@ All chunks come from episode 18. CMA-ES performs 48 simulator evaluations per te
 
 | Condition | Mean final Chamfer [mm] ↓ | Beats hold still | Beats policy |
 |---|---:|---:|---:|
-| Tools held still | 3.65 | — | — |
-| Policy stroke | 4.26 | 3/13 | — |
+| Tools held still | 3.57 | — | — |
+| Policy stroke | 4.27 | 3/13 | — |
 | Per-chunk CMA-ES search | 2.91 | 13/13 | 13/13 |
 
 ### Interpretation
 
-- The feed-forward imitation policy is worse than holding still on average: 4.26 versus 3.65 mm.
-- Per-chunk search reduces Chamfer by 31.7% relative to the policy and by 20.3% relative to holding still.
+- The feed-forward imitation policy is worse than holding still on average: 4.27 versus 3.57 mm.
+- Per-chunk search reduces Chamfer by 31.9% relative to the policy and by 18.5% relative to holding still.
 - Search beats both policy and hold-still on all 13 chunks, showing latent-space headroom.
-- Approximate simulator/search noise is 0.4 mm.
+- Approximate simulator/search noise is 0.4 mm; CMA-ES beats hold still by more than that margin on 8/13 chunks and the policy on 12/13 (`data/sim/cma_sweep_v2`).
 - Final-state Chamfer can reward inactivity and is not sufficient by itself to establish task success.
 
 ## Table 4: Leave-one-chunk-out transfer of search corrections
 
 Source: [`RESULT_SIM_SEARCH_PROGRESS_REWARD_TIMING.md`](RESULT_SIM_SEARCH_PROGRESS_REWARD_TIMING.md), lines 42--56.
 
-These are separate reruns from Table 3; their hold and policy means differ slightly because the simulator is nondeterministic. Constant-offset and fine-tuned-prior methods receive no per-instance search on the held-out chunk.
+These are separate reruns from Table 3 (the hold-still and policy rollouts were repeated and agree to 0.01 mm; the simulator is nondeterministic only at the ~0.4 mm level under parallel load). Constant-offset and fine-tuned-prior methods receive no per-instance search on the held-out chunk.
 
 | Held-out-chunk method | Mean final Chamfer [mm] ↓ | Beats policy |
 |---|---:|---:|
@@ -131,7 +133,7 @@ Use these only with the caveats above:
 
 1. Across three episode-grouped development splits, retrieval reduces raw trajectory error by 22% relative to ACT (22.4 versus 28.8 mm) and shape error by 24% relative to Chamfer nearest-neighbour retrieval (21.7 versus 28.6 mm).
 2. The selected CVAE and retrieval are tied at approximately 22 mm measured-pose raw error, but the selected CVAE reduces chained fed-own-pose error by 25% (28.6 versus 38.3 mm).
-3. The feed-forward simulator policy is worse than holding still on average (4.26 versus 3.65 mm Chamfer), while 48-rollout per-chunk CMA-ES reaches 2.91 mm and beats both on 13/13 chunks.
+3. The feed-forward simulator policy is worse than holding still on average (4.27 versus 3.57 mm Chamfer), while 48-rollout per-chunk CMA-ES reaches 2.91 mm and beats both on 13/13 chunks.
 4. The per-chunk search improvement does not transfer reliably: leave-one-chunk-out constant-offset and fine-tuned-prior corrections obtain 4.07 and 4.25 mm, respectively, versus 4.27 mm for the original policy.
 5. A constant-Jacobian ridge dynamics model reduces standardized outcome MSE from 1.25 to 0.65 and improves 16-way stroke top-1 identification from 6% chance to 23%, but only for a coarse state representation near demonstrations.
 
@@ -139,7 +141,6 @@ Use these only with the caveats above:
 
 Do not add these to the main paper table without new verification or matched reruns:
 
-- The claim that search exceeds a noise margin on 8/13 chunks is not present in the committed report or implementation.
 - The artifact-only “best of three modes in hindsight” value of 18.4 mm / 85% is not present in repository history.
 - Legacy VINN-RBF, direct-GRU, and Motion-BeT rows predate the workspace-translation augmentation fix and are not directly rankable against the final protocol.
 - External ACT-BeT uses a different export, horizon, split, and checkpoint history.
@@ -150,7 +151,7 @@ Do not add these to the main paper table without new verification or matched rer
 ## Fact-check checklist for future agents
 
 - [ ] Confirm that every table value still matches the cited committed report after future pulls.
-- [ ] Record checkpoint hashes, run directories, and per-seed JSONs if they become available.
+- [x] Checkpoint hashes (`data/checkpoint_sha256.txt`), per-seed JSONs (`data/deployment/`) and simulator outputs (`data/sim/`) are committed; `data/make_tables.py` regenerates the numbers.
 - [ ] Recompute uncertainty from per-segment paired errors; do not infer significance from sub-millimetre mean differences.
 - [ ] Run all main baselines on one locked, untouched episode-level test set.
 - [ ] Keep one-seed rows visibly marked.

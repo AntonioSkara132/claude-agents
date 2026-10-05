@@ -34,10 +34,10 @@ started from the policy's stroke; ~0.4 mm search noise, the simulator is not bit
 | 11 | 3.14 | 2.48 | 2.34 | +6 / +3 |
 | 12 | 3.02 | 3.91 | 2.45 | +17 / +10 |
 | 13 | 3.21 | 3.35 | 2.31 | +18 / +10 |
-| **mean** | **3.65** | **4.26** | **2.91** | |
+| **mean** | **3.57** | **4.27** | **2.91** | |
 
 - The policy's own stroke beats holding still on 3/13 chunks: by simulated outcome the imitation policy is
-  on average worse than doing nothing. CMA-ES beats both on 13/13.
+  on average worse than doing nothing (4.27 vs 3.57 mm). CMA-ES beats both on 13/13.
 - Consistent signature: the policy lifts the dough it moves about twice as much as the human does
   (dough piles up instead of spreading). Part of this is physics: even the recorded stroke ends ~7 mm
   taller in simulation than in reality (section 3).

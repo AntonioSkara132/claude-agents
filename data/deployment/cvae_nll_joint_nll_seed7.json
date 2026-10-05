@@ -1,0 +1,28 @@
+{
+  "checkpoint": "runs/cvae_nll/joint_nll_seed7_out/cvae/checkpoint.pt",
+  "test_segments": 119,
+  "pose_measured": {
+    "start_mm": 12.950398857570926,
+    "shape_mm": 21.692122542543256,
+    "raw_mm": 22.462139790956325,
+    "orientation_deg": 5.786873836962462,
+    "motion_size": 0.8800084357884844,
+    "shape_spread_pred_mm": 11.400115716529436,
+    "shape_spread_true_mm": 18.879423688526423
+  },
+  "pose_masked": {
+    "start_mm": 23.633944606975618,
+    "shape_mm": 26.24570000765902,
+    "raw_mm": 28.31529484036758,
+    "orientation_deg": 7.057307302662831,
+    "motion_size": 0.9043651911052151,
+    "shape_spread_pred_mm": 6.4951926518197025,
+    "shape_spread_true_mm": 18.879423688526423
+  },
+  "chained": {
+    "segments": 110,
+    "raw_mm_measured": 21.939852975278107,
+    "raw_mm_fed_back": 32.85336901366604,
+    "raw_mm_masked": 27.130702307969834
+  }
+}

@@ -1,0 +1,23 @@
+{
+ "held_out": "episode18_kugla_chunk09",
+ "fit_nll": -1.5625909566879272,
+ "fit_kl": 3.109919309616089,
+ "awr_action_norm": 0.7431014776229858,
+ "const_action_norm": 0.6049229049661544,
+ "best_of_k_delta_p": 0.388822078704834,
+ "policy": {
+  "delta_p": 0.1644485890865326,
+  "chamfer_mm": 6.75592911943618,
+  "displacement_mm": 18.467761993408203
+ },
+ "awr": {
+  "delta_p": 0.18958783149719238,
+  "chamfer_mm": 6.825993348180757,
+  "displacement_mm": 18.190481185913086
+ },
+ "const": {
+  "delta_p": 0.2949393391609192,
+  "chamfer_mm": 6.790038060737547,
+  "displacement_mm": 16.545162200927734
+ }
+}
