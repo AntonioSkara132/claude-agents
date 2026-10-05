@@ -1,0 +1,28 @@
+{
+  "checkpoint": "runs/generative/diffusion_policy_t01_seed27_out/diffusion_policy/checkpoint.pt",
+  "test_segments": 125,
+  "pose_measured": {
+    "start_mm": 18.222440092187835,
+    "shape_mm": 28.572961811665028,
+    "raw_mm": 31.771869470764457,
+    "orientation_deg": 8.449029405456802,
+    "motion_size": 0.7037962424749535,
+    "shape_spread_pred_mm": 5.456116906679592,
+    "shape_spread_true_mm": 18.738220368819995
+  },
+  "pose_masked": {
+    "start_mm": 26.477707208598176,
+    "shape_mm": 30.70370393014884,
+    "raw_mm": 35.369513933434874,
+    "orientation_deg": 8.563572303235956,
+    "motion_size": 0.6963569384301124,
+    "shape_spread_pred_mm": 3.3870950503435773,
+    "shape_spread_true_mm": 18.738220368819995
+  },
+  "chained": {
+    "segments": 116,
+    "raw_mm_measured": 31.34060873455974,
+    "raw_mm_fed_back": 37.92991405583079,
+    "raw_mm_masked": 34.12193676155822
+  }
+}

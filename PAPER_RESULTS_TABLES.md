@@ -31,8 +31,8 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 
 | Method | Start error [mm] ↓ | Shape error [mm] ↓ | Raw error [mm] ↓ | Orientation [deg] ↓ | Motion size [%] | Pose-masked raw [mm] ↓ | Seeds |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Dataset-mean stroke | — | 27.5 | 27.5 | — | — | — | 3 |
-| Chamfer NN, k=5 | measured | 28.6 | 28.6 | — | — | 31.1 | 3 |
+| Dataset-mean stroke | measured* | 27.5 | 27.5 | 8.5† | 73 | 31.4‡ | 3 |
+| Chamfer NN, k=5 | measured* | 28.6 | 28.6 | n/a (positions only) | 82 | 31.1‡ | 3 |
 | Retrieval + dough-relative anchor | 12.9 | 21.7 | 22.4 | 5.9 | 85 | 31.1 | 3 |
 | ACT, anchored, minimum 150 epochs | 21.3 | 26.0 | 28.9 | 7.4 | 85 | 30.9 | 3 |
 | Diffusion Policy | 18.2 | 28.6 | 31.8 | 8.5 | 70 | 35.4 | 1 |
@@ -47,7 +47,7 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 - Retrieval reduces shape error by 24.1% relative to Chamfer NN: 21.7 versus 28.6 mm.
 - The selected CVAE reduces shape error by 26.9% relative to Chamfer NN: 20.9 versus 28.6 mm.
 - Diffusion Policy is a one-seed result and should remain visibly marked as such.
-- Chamfer NN uses measured start alignment; its start value is therefore not comparable to learned start prediction.
+- *Both baselines start exactly at the measured pose (start error 0 by construction), so their start column is not comparable to learned start prediction. †Orientation of the dataset-mean stroke = the training-mean quaternion per tool (8.5°); Chamfer NN blends positions only. ‡Pose-masked raw for the baselines places the stroke at the training-mean start offset from the dough centroid (dataset mean) or the neighbours' start offset (Chamfer NN); masked start error 27.5 and 24.5 mm. Source: `data/dataset_mean_stroke.json`, `data/chamfer_nn.json`.
 
 ## Table 2: Robustness to missing and recursively predicted pose
 
@@ -57,7 +57,7 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 |---|---:|---:|---:|---:|
 | Retrieval + dough-relative anchor | 31.1 | 21.8 | 30.0 | 38.3 |
 | ACT, anchored, minimum 150 epochs | 30.9 | 28.2 | 28.7 | 28.7 |
-| Diffusion Policy | 35.4 | not reported | 34.1 | not reported |
+| Diffusion Policy (1 seed) | 35.4 | 31.3 | 34.1 | 37.9 |
 | CVAE, fixed prior (smoothed early stopping) | 30.0 | 24.1 | 28.5 | 29.2 |
 | CVAE, conditional prior | 30.4 | 21.5 | 28.9 | 28.7 |
 | Selected CVAE, joint start + fixed 5 cm cloud scale | 28.6 | 21.6 | 27.1 | 28.6 |
@@ -76,8 +76,8 @@ All chunks come from episode 18. CMA-ES performs 48 simulator evaluations per te
 
 | Condition | Mean final Chamfer [mm] ↓ | Beats hold still | Beats policy |
 |---|---:|---:|---:|
-| Tools held still | 3.57 | — | — |
-| Policy stroke | 4.27 | 3/13 | — |
+| Tools held still | 3.57 | (reference) | 10/13 |
+| Policy stroke | 4.27 | 3/13 | (reference) |
 | Per-chunk CMA-ES search | 2.91 | 13/13 | 13/13 |
 
 ### Interpretation
@@ -96,8 +96,8 @@ These are separate reruns from Table 3 (the hold-still and policy rollouts were 
 
 | Held-out-chunk method | Mean final Chamfer [mm] ↓ | Beats policy |
 |---|---:|---:|
-| Hold still | 3.57 | — |
-| Original policy | 4.27 | — |
+| Hold still | 3.57 | 10/13 |
+| Original policy | 4.27 | (reference) |
 | Constant mean offset learned from the other chunks | 4.07 | 9/13 |
 | Fine-tuned conditional prior learned from the other chunks | 4.25 | 7/13 |
 | Per-chunk CMA-ES search upper bound | 2.91 | 13/13 |
@@ -117,7 +117,7 @@ Grouped split: 451 training, 41 validation, and 119 test strokes. This predicts 
 | Model | Standardized outcome MSE ↓ | Mean candidate rank among 16 ↓ | Top-1 stroke identification ↑ |
 |---|---:|---:|---:|
 | Persistence / chance ranking | 1.25 | 8.5 | 6% |
-| Mean change | 1.23 | — | — |
+| Mean change | 1.23 | n/a (stroke-independent) | n/a |
 | Constant-Jacobian ridge | 0.65 | 4.9 | 23% |
 | State-dependent Jacobian MLP | 0.77 | 5.9 | 16% |
 
