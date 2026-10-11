@@ -34,6 +34,7 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 | Dataset-mean stroke | measured* | 27.5 | 27.5 | 8.5† | 73 | 31.4‡ | 3 |
 | Chamfer NN, k=5 | measured* | 28.6 | 28.6 | n/a (positions only) | 82 | 31.1‡ | 3 |
 | Retrieval + dough-relative anchor | 12.9 | 21.7 | 22.4 | 5.9 | 85 | 31.1 | 3 |
+| Retrieval + dough-relative anchor, fixed 5 cm cloud scale (robot checkpoint) | 13.6 | 21.7 | 22.6 | 5.9 | 84 | 30.6 | 3 |
 | ACT, anchored, minimum 150 epochs | 21.3 | 26.0 | 28.9 | 7.4 | 85 | 30.9 | 3 |
 | Diffusion Policy | 18.2 | 28.6 | 31.8 | 8.5 | 70 | 35.4 | 1 |
 | CVAE, fixed prior (smoothed early stopping) | 14.9 | 24.5 | 25.2 | 6.1 | 89 | 30.0 | 3 |
@@ -56,6 +57,7 @@ Source: [`RESULT_CONDITIONAL_PRIOR_CVAE_NEW_BEST.md`](RESULT_CONDITIONAL_PRIOR_C
 | Method | Pose-masked raw [mm] ↓ | Chained measured [mm] ↓ | Chained masked [mm] ↓ | Chained fed-own-pose [mm] ↓ |
 |---|---:|---:|---:|---:|
 | Retrieval + dough-relative anchor | 31.1 | 21.8 | 30.0 | 38.3 |
+| Retrieval + dough-relative anchor, fixed 5 cm cloud scale | 30.6 | 22.2 | 29.7 | 37.7 |
 | ACT, anchored, minimum 150 epochs | 30.9 | 28.2 | 28.7 | 28.7 |
 | Diffusion Policy (1 seed) | 35.4 | 31.3 | 34.1 | 37.9 |
 | CVAE, fixed prior (smoothed early stopping) | 30.0 | 24.1 | 28.5 | 29.2 |
