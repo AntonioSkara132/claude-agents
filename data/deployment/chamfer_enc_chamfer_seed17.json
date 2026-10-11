@@ -1,0 +1,33 @@
+{
+  "checkpoint": "/workspace/runs/chamfer_enc/chamfer_seed17_out/vinn_rbf/checkpoint.pt",
+  "test_segments": 147,
+  "pose_measured": {
+    "start_mm": 19.56059862710255,
+    "shape_mm": 25.11053456506058,
+    "raw_mm": 27.436974881678548,
+    "orientation_deg": 6.167877773036121,
+    "motion_size": 0.8262392287501352,
+    "shape_spread_pred_mm": 7.927025762949598,
+    "shape_spread_true_mm": 18.985449380811335,
+    "max_retrieval_weight": 0.040176358073949814,
+    "uniform_weight": 0.0024390243902439024,
+    "duration_median_error": 0.08702440424575991
+  },
+  "pose_masked": {
+    "start_mm": 25.92611570376841,
+    "shape_mm": 26.515369604138122,
+    "raw_mm": 30.714040850991697,
+    "orientation_deg": 6.881409229878473,
+    "motion_size": 0.808253974029427,
+    "shape_spread_pred_mm": 6.940662002448171,
+    "shape_spread_true_mm": 18.985449380811335,
+    "max_retrieval_weight": 0.03789994493126869,
+    "uniform_weight": 0.0024390243902439024
+  },
+  "chained": {
+    "segments": 138,
+    "raw_mm_measured": 26.572675620648223,
+    "raw_mm_fed_back": 31.556266879467515,
+    "raw_mm_masked": 29.652003762403808
+  }
+}

@@ -78,3 +78,33 @@ re-running on the current config: progress input and previous-stroke input (both
 
 Code: dom_retrieval `3337138` (dynamics), `504dfee` (reduced-order collector), analysis script in
 `scripts/analysis/`. Runs: `/workspace/runs/dynamics/`, `TaichiDough/experiments/differentiable_mpm/runs/reduced_order_real/`.
+
+## 4. Frame flicker and two encoder changes (2026-10-11)
+
+Between consecutive camera frames of the same scene (33 ms, pose fixed, 60 test scenes) the predicted stroke
+shape changes by 3-4 mm (6 mm after 5 frames) against 17 mm between different segments, and the retrieval
+puts only 51% of its weight on the same demonstrations after 5 frames (`scripts/analysis/frame_flicker.py`).
+Resampling the same frame changes nothing (< 0.1 mm), so it is the encoder's sensitivity to frame-level cloud
+changes, not point sampling. Averaging the predicted stroke over 6 frames brings the plan-to-plan change to
+0.6 mm.
+
+Two training changes (`97db2ff`), 3 seeds each, on the size-aware retrieval config:
+
+| retrieval + anchor, fixed 5 cm scale | measured start / shape / raw | masked raw | chained masked / fed-own-pose | next-frame stroke change | frame-encoder cosine distance next frame / between segments |
+|---|---|---|---|---|---|
+| baseline (robot checkpoint) | 13.6 / 21.7 / 22.6 | 30.6 | 29.7 / 37.7 | 3.3 mm | 0.149 / 0.754 (0.20) |
+| + scene-positive InfoNCE (`pretrain_scene_positives`) | 13.8 / 21.8 / 22.8 | 31.5 | 30.2 / 32.7 | 3.7 mm | 0.120 / 0.847 (0.14) |
+| Chamfer landmark encoder (`encoder.kind: chamfer`) | 19.0 / 24.2 / 27.3 | 31.3 | 30.2 / 33.4 | 4.2 mm | 0.094 / 1.007 (0.09) |
+
+- Scene positives make the frame encoder itself steadier (next-frame distance relative to between-segment
+  distance 0.20 -> 0.14) and leave accuracy unchanged, but the plan flicker does not drop: the retrieval head
+  stage (pose branch + projection, RBF bandwidth 0.15) re-amplifies small embedding differences. The one clear
+  gain is chained fed-own-pose (37.7 -> 32.7 mm).
+- The Chamfer landmark encoder has the steadiest embedding (0.09) but is clearly less accurate (raw 27.3,
+  start 19.0): its weights are flatter (max 0.025 vs 0.11), so it averages more and its predictions are less
+  distinct (9.7 mm between segments vs 16.7); its 256-point subsample also adds 2.3 mm of resampling noise.
+- Conclusion: encoder stability is not the bottleneck for plan stability; the retrieval head is. Practical
+  fix for the robot: average the stroke (or embedding) over ~6 frames before planning (0.6-0.7 mm flicker for
+  every encoder). Training-side, the next lever is a consistency term in the retrieval-head stage itself.
+
+Raw outputs: `data/deployment/scene_pos_*`, `data/deployment/chamfer_enc_*`; runs `/workspace/runs/scene_pos`, `/workspace/runs/chamfer_enc`.

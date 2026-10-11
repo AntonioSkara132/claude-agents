@@ -1,0 +1,33 @@
+{
+  "checkpoint": "/workspace/runs/scene_pos/scene_seed17_out/vinn_rbf/checkpoint.pt",
+  "test_segments": 147,
+  "pose_measured": {
+    "start_mm": 15.41944602700421,
+    "shape_mm": 21.369767346799865,
+    "raw_mm": 22.542194275647617,
+    "orientation_deg": 5.894835602578312,
+    "motion_size": 0.8078912092977719,
+    "shape_spread_pred_mm": 9.721183881154039,
+    "shape_spread_true_mm": 18.985449380811335,
+    "max_retrieval_weight": 0.03806493058800697,
+    "uniform_weight": 0.0024390243902439024,
+    "duration_median_error": 0.09201331068531468
+  },
+  "pose_masked": {
+    "start_mm": 24.45469243413097,
+    "shape_mm": 26.09588354307176,
+    "raw_mm": 29.71728951458479,
+    "orientation_deg": 6.967319308015338,
+    "motion_size": 0.7623662008604057,
+    "shape_spread_pred_mm": 6.627506588504084,
+    "shape_spread_true_mm": 18.985449380811335,
+    "max_retrieval_weight": 0.024010878056287766,
+    "uniform_weight": 0.0024390243902439024
+  },
+  "chained": {
+    "segments": 138,
+    "raw_mm_measured": 22.2450903924887,
+    "raw_mm_fed_back": 33.978257973595916,
+    "raw_mm_masked": 28.158566488369914
+  }
+}
