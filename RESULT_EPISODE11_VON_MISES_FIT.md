@@ -77,7 +77,66 @@ viscosity 2.7, floor_retention 0.90 (bound), tool_friction 1.00 (bound), tool_st
 parameters sit at their bounds: two chunks do not constrain them. Stopped to free the GPU; run directory
 `experiments/differentiable_mpm/runs/episode11_vm1000_e20k_fit_validsubset` kept.
 
-## What is running instead (labelled diagnostics, not the requested fit)
+## Diagnostic fit 2 (the main result): requested settings, depth term off, 7 finite-adjoint chunks -- FINISHED
+
+`experiments/differentiable_mpm/runs/episode11_vm1000_e20k_fit_depthoff7`: von Mises 1000 Pa, E0 20 kPa, f64, CUDA,
+batch size 4, lr 0.01, **100/100 updates, no errors**, backward replay consistent on all 100 objectives, 348 MB.
+Training chunks 02, 04, 05, 08, 21, 23, 26; validation 07, 15, 22; `loss.depth_weight: 0` (coverage + distance terms).
+
+1. Final `parameters_after` (update 100):
+
+| parameter | start | final | bound |
+|---|---|---|---|
+| youngs_modulus | 20 000 | **14 979 Pa** | 2 000 - 60 000 |
+| poisson_ratio | 0.47 | **0.490** | upper bound 0.49 |
+| viscosity | 1.0 | **59.5 Pa s** | upper bound 60 |
+| floor_retention | 0.80 | **0.900** | upper bound 0.9 |
+| tool_friction_coefficient | 0.90 | **1.000** | upper bound 1.0 |
+| tool_stickiness | 0.05 | **0.300** | upper bound 0.3 |
+
+Five of six parameters end on their upper bounds (nu, viscosity, floor retention, friction, stickiness); only
+E is interior. The bounds, not the data, determine this result.
+
+2. Loss. Minibatch objective 0.390 (update 1) -> 0.299 (update 100); per batch composition the hard batch
+went 0.68 -> ~0.39-0.46 and the easy batch 0.39 -> ~0.29-0.33, flat after update ~40. Per-chunk differentiable
+objective at the final parameters: training 02 1.07, 04 0.19, 05 0.40, 08 0.31, 21 0.22, 23 0.51, 26 0.27
+(start, from the update-0 classification: 1.09, 0.28, 0.47, 0.42, 0.31, 0.70, 0.36); validation 07 0.57,
+15 0.48, 22 0.37.
+
+3. Validation rec-to-sim. The fit's own strict evaluator failed for the environment reason (it is spawned with
+the plain interpreter inside the worker; Taichi cannot import there), so it is being re-run on the saved
+`selected_parameters.json`; its numbers will be added below. Meanwhile, my own measure (recorded tool motion,
+full forward simulation, chamfer between simulated particles and the recorded cloud, both in the scene frame):
+
+| validation chunk | update 0: mean / last / max | final: mean / last / max |
+|---|---|---|
+| 07 | 14.7 / 21.8 / 24.0 mm | 11.9 / 15.2 / 18.3 mm |
+| 15 | 12.8 / 21.8 / 22.1 | 11.8 / 18.8 / 19.7 |
+| 22 | 11.1 / 19.9 / 21.4 | 9.5 / 15.5 / 16.2 |
+
+4. Completed all 100 updates; no errors in the fit log. 5. Output 348 MB.
+
+### What the simulations show (GIFs in `download/gifs/`)
+
+In Episode 11 the dough is transported across the table during a chunk. The simulated dough follows but lags:
+the chamfer starts at the reconstruction error (5-8 mm) and grows to ~20 mm at the initial parameters, ~15-19 mm
+at the final ones. The contact parameters at their upper bounds buy about a third of the gap and no more; E and
+viscosity hardly matter for transport (the update-62 and update-100 simulations of chunk07, E 16.7 vs 15.0 kPa and
+viscosity 31 vs 59, differ by 0.5 mm mean particle displacement and give identical chamfer). The simulated tool
+also smears a corner of the dough onto the floor (two detached blobs, ~190 particles, 1.9 mm high), at both
+parameter sets. Conclusion for the requester: with this contact model the simulator cannot drag the dough as
+far as the recordings do; widening the bounds or changing the tool-contact model is the lever, not more updates.
+
+Files: `chunk{07,15,22}_{initial,final}.gif` (recorded | simulated | overlay, top-down),
+`chunk07_perspective_preview.gif` (renderer view), `chunk07_perspective_initial_vs_final_lastframe.png`.
+
+## Download
+
+`/workspace/runs/episode11/download/` on the GPU host (367 MB): `episode11_vm1000_e20k_fit_depthoff7/` (the fit
+run, with `optimizer_state.json`, `selected_parameters.json`, `result.json`, per-episode workers),
+`episode11_vm1000_e20k_fit_validsubset/` (diagnostic fit 1), `classification*.json`, `gifs/`.
+
+## Earlier interim notes (superseded where the above differs)
 
 `episode11_vm1000_e20k_fit_depthoff7`: the requested settings (von Mises 1000 Pa, E0 20 kPa, batch size 4,
 100 updates, lr 0.01, f64) with `loss.depth_weight: 0`, on the 7 training chunks with finite adjoints
