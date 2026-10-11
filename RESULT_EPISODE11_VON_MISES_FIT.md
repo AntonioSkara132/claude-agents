@@ -47,19 +47,42 @@ pixels); the initial-referenced depth term is not evaluable for recordings with 
 Options on your side: `loss.depth_weight: 0` (coverage + distance terms only; the check is then skipped),
 shorter scored windows, or a depth term referenced to the previous frame.
 
-### The adjoint failures (06, 25, 27)
+### The adjoint failures are not von Mises-specific, and there are more of them than the depth term showed
+
+With the depth term off (so every chunk reaches the backward pass), the same classification was run under
+von Mises AND under the original stretch-clamp plasticity, one episode at a time:
+
+| chunk | von Mises, depth off | stretch-clamp, depth off |
+|---|---|---|
+| 02, 04, 05, 08, 21, 23, 26 | finite gradient (loss 0.28-1.09) | finite gradient (loss 0.37-1.15) |
+| 09, 10, 14, 16, 17, 18 | non-finite adjoint | non-finite adjoint |
+| 06, 25, 27 (with the depth term) | non-finite adjoint | (not re-run) |
+
+Identical failure sets under both plasticity models, so the backward-pass blow-up is a property of these
+recordings' dynamics (large motion / contact) in the differentiable solver, not of the von Mises model.
+In total 9 of the 16 training chunks have unstable adjoints; 7 are usable (02, 04, 05, 08, 21, 23, 26).
+Correction to an earlier interim note here: a pass that I read as "09 and 16 finite when run alone" was
+reading the preflight validations, not the gradient results.
+
+### The adjoint failures (06, 25, 27), first seen with the depth term on
 
 Forward passes finish with the highest final losses of the set (0.39-0.79); the backward replay then yields
 non-finite adjoints for x, v, C, F, Jp from a late step backwards. Same three fail with and without the depth
 term. Looks like the von Mises return-mapping gradient under large plastic flow; not investigated further.
 
-## What is running instead (both labelled diagnostics, not the requested fit)
+## Diagnostic fit 1: requested settings on the two chunks that pass as-is (04, 05) -- stopped at update 19
 
-1. `episode11_vm1000_e20k_fit_validsubset`: the requested settings on the two valid training chunks (04, 05)
-   + the 3 validation chunks (batch size 2). Shows the von Mises fit runs end to end here and gives timing.
-2. `episode11_vm1000_e20k_fit_depthoff`: the requested settings with `loss.depth_weight: 0` on the 13
-   training chunks that are not adjoint failures + validation (batch size 4). The closest thing to the
-   requested 16-chunk fit that can run on this data.
+Loss 0.326 -> 0.257 over 19 updates (~3 min each). Parameters after 19: E 23 412 Pa, nu 0.490 (bound),
+viscosity 2.7, floor_retention 0.90 (bound), tool_friction 1.00 (bound), tool_stickiness 0.224. Three of six
+parameters sit at their bounds: two chunks do not constrain them. Stopped to free the GPU; run directory
+`experiments/differentiable_mpm/runs/episode11_vm1000_e20k_fit_validsubset` kept.
+
+## What is running instead (labelled diagnostics, not the requested fit)
+
+`episode11_vm1000_e20k_fit_depthoff7`: the requested settings (von Mises 1000 Pa, E0 20 kPa, batch size 4,
+100 updates, lr 0.01, f64) with `loss.depth_weight: 0`, on the 7 training chunks with finite adjoints
+(02, 04, 05, 08, 21, 23, 26) + the 3 validation chunks. The closest fit to the request that this data allows.
+(An earlier 13-chunk depth-off attempt died on the adjoint chunks.)
 
 Both write `optimizer_state.json` per update under `experiments/differentiable_mpm/runs/`. Results (final
 parameters, start/end training and validation loss, per-chunk validation rec-to-sim, completion, output size)
