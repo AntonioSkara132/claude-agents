@@ -95,6 +95,7 @@ Two training changes (`97db2ff`), 3 seeds each, on the size-aware retrieval conf
 | baseline (robot checkpoint) | 13.6 / 21.7 / 22.6 | 30.6 | 29.7 / 37.7 | 3.3 mm | 0.149 / 0.754 (0.20) |
 | + scene-positive InfoNCE (`pretrain_scene_positives`) | 13.8 / 21.8 / 22.8 | 31.5 | 30.2 / 32.7 | 3.7 mm | 0.120 / 0.847 (0.14) |
 | Chamfer landmark encoder (`encoder.kind: chamfer`) | 19.0 / 24.2 / 27.3 | 31.3 | 30.2 / 33.4 | 4.2 mm | 0.094 / 1.007 (0.09) |
+| EMD landmark encoder (`landmark_metric: emd`, Sinkhorn) | 17.1 / 23.6 / 25.3 | 31.5 | 30.7 / 33.7 | 3.1 mm | (weights: max 0.040 vs 0.031 Chamfer, 0.089 PointNet) |
 
 - Scene positives make the frame encoder itself steadier (next-frame distance relative to between-segment
   distance 0.20 -> 0.14) and leave accuracy unchanged, but the plan flicker does not drop: the retrieval head
@@ -103,6 +104,7 @@ Two training changes (`97db2ff`), 3 seeds each, on the size-aware retrieval conf
 - The Chamfer landmark encoder has the steadiest embedding (0.09) but is clearly less accurate (raw 27.3,
   start 19.0): its weights are flatter (max 0.025 vs 0.11), so it averages more and its predictions are less
   distinct (9.7 mm between segments vs 16.7); its 256-point subsample also adds 2.3 mm of resampling noise.
+- EMD landmarks (`5f919aa`) are 2 mm better than Chamfer landmarks (raw 25.3 vs 27.3; sharper weights) and the steadiest plan of all (3.1 mm next frame), but still 2.7 mm behind the learned PointNet.
 - Conclusion: encoder stability is not the bottleneck for plan stability; the retrieval head is. Practical
   fix for the robot: average the stroke (or embedding) over ~6 frames before planning (0.6-0.7 mm flicker for
   every encoder). Training-side, the next lever is a consistency term in the retrieval-head stage itself.

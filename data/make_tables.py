@@ -19,6 +19,7 @@ RUNS = {
     "Retrieval + anchor, fixed 5 cm scale": "rel_anchor_size_cond_rel_size",
     "Retrieval + anchor, fixed scale + scene positives": "scene_pos_scene",
     "Retrieval + anchor, Chamfer landmark encoder": "chamfer_enc_chamfer",
+    "Retrieval + anchor, EMD landmark encoder": "emd_enc_emd",
     "ACT, anchored, minimum 150 epochs": "act_min150_act",
     "ACT, anchored, patience 50": "gen_anchor_act",
     "CVAE, fixed prior (anchor)": "gen_anchor_cvae",
