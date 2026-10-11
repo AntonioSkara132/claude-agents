@@ -31,24 +31,16 @@ All paths are relative to the TaichiDough repository root.
    - `collision_manifest.json`
    - `ur_spathla_x10_closed.stl`
    - `gen3_fixed_spathla_closed.stl`
-4. The TaichiDough code. This is the part that is not yet on GitHub. See "Code" below.
+4. The TaichiDough code, now pushed to GitHub `main` at `58134a0` (fit code) plus the script
+   `scripts/make_von_mises_dataset.py`. See "Code" below.
 
 Please do not change the file names or folder names, because the configs use exact relative paths.
 
 ## Code
 
-The GitHub remote `origin` (`AntonioSkara132/TaichiDough`) is at commit `96c2696`. My working copy
-has uncommitted changes that this fit needs, including:
-
-- `experiments/differentiable_mpm/calibrate_dataset.py` (batch shuffle options, `_iteration_batch`)
-- `experiments/differentiable_mpm/data.py`, `policy_adapter.py`, `register_episode3_tools.py`,
-  `register_tool_clouds.py`
-- new files `sdf_cache.py`, `partial_view_icp.py`, `prepare_episode11_dynamics_temporal.py`,
-  `prepare_episode11_table_calibration.py`, `scripts/continue_minibatch_fit.py`
-
-Until these are pushed, the code must come from a patch file. Ask me for the patch if it is
-needed. The quickest check is `calibrate_dataset fit --help` and whether it lists
-`--fixed-batch-order` and `--batch-shuffle-seed`.
+Clone `AntonioSkara132/TaichiDough` and check out `main` at commit `c0fcb0d` or later. That commit
+has the fit code: batch shuffle options in `calibrate_dataset.py`, the continuation script, the
+Episode 11 preparation scripts, and `scripts/make_von_mises_dataset.py`. No patch is needed.
 
 ## Environment
 
@@ -59,11 +51,22 @@ the TaichiDough requirements. Confirm with `python -c "import taichi; print(taic
 
 Run from the TaichiDough repository root. `DS` is the von Mises dataset file (created in step 1 below).
 
-Step 1. Create the von Mises dataset from the stretch-clamp dataset. The script
-`make_vm_dataset.py` is written for Episode 18 file names, so it needs the Episode 11 folder name
-and the output name changed before use. It sets plasticity to von Mises, sets the yield stress to 1000 Pa,
-sets the starting Young's modulus to 20000 Pa, and removes `plastic_min`/`plastic_max` from the
-fit list and bounds. Output: `dataset_episode11_dynamics_temporal_von_mises_1000pa_v1.json` in the Episode 11 folder.
+Step 1. The von Mises dataset is already generated. It is in the transferred Episode 11 folder:
+`experiments/differentiable_mpm/data/episode11_dynamics_icp_dough4096_mass300g_temporal_v1/dataset_episode11_dynamics_temporal_von_mises_1000pa_v1.json`
+together with 19 config files named `*_von_mises_1000pa_v1.json`. Do not regenerate them unless the
+checks below fail. To regenerate (same script that made the Episode 18 fit's dataset, output checked
+identical to it), run from the TaichiDough root:
+
+```bash
+python scripts/make_von_mises_dataset.py experiments/differentiable_mpm/data/episode11_dynamics_icp_dough4096_mass300g_temporal_v1 \
+  --source dataset_episode11_dynamics_temporal_v1.json \
+  --output dataset_episode11_dynamics_temporal_von_mises_1000pa_v1.json \
+  --name episode11-dynamics-icp-temporal-von-mises-1000pa-e20k-v1
+```
+
+Check after step 1: 19 episodes, 16 with membership `training`; every config has
+`simulation.plasticity` = `von-mises`, `simulation.von_mises_yield_stress_pa` = 1000.0,
+`parameters.youngs_modulus` = 20000.0; `fit_parameters` has no `plastic_min` or `plastic_max`.
 
 Step 2. Run the fit:
 
