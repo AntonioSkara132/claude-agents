@@ -103,10 +103,30 @@ objective at the final parameters: training 02 1.07, 04 0.19, 05 0.40, 08 0.31, 
 (start, from the update-0 classification: 1.09, 0.28, 0.47, 0.42, 0.31, 0.70, 0.36); validation 07 0.57,
 15 0.48, 22 0.37.
 
-3. Validation rec-to-sim. The fit's own strict evaluator failed for the environment reason (it is spawned with
-the plain interpreter inside the worker; Taichi cannot import there), so it is being re-run on the saved
-`selected_parameters.json`; its numbers will be added below. Meanwhile, my own measure (recorded tool motion,
-full forward simulation, chamfer between simulated particles and the recorded cloud, both in the scene frame):
+2b. Differentiable objective per chunk, update 0 -> final (strict `evaluate` at both parameter sets):
+training 02 1.092 -> 1.068, 04 0.283 -> 0.186, 05 0.468 -> 0.403, 08 0.422 -> 0.306, 21 0.307 -> 0.222,
+23 0.695 -> 0.509, 26 0.361 -> 0.272 (mean 0.518 -> 0.424); **validation 07 0.754 -> 0.572, 15 0.582 -> 0.481,
+22 0.473 -> 0.367 (mean 0.603 -> 0.473)**. The validation chunks improve by the same ~20% as training.
+
+3. Validation rec-to-sim. The strict evaluator (`dynamic-topview-proxy-replay/v1`, recorded tool motion,
+top-view comparison of the visible surface) reports pixel metrics rather than a single metre distance; both
+parameter sets evaluated with the same code (`..._evaluate_initial`, `..._evaluate`). Post-initial means:
+
+| validation chunk | pixel MAE, update 0 -> final | pixel IoU | depth-change MAE | strict status |
+|---|---|---|---|---|
+| 07 | 6.43 -> 5.97 mm | 0.283 -> 0.334 | 5.69 -> 5.95 mm | completed, 13/13 frames |
+| 15 | 5.41 -> 5.72 mm | 0.308 -> 0.339 | 4.34 -> 4.53 mm | 7 of 14 frames flagged invalid |
+| 22 | 3.19 -> 2.99 mm | 0.373 -> 0.412 | 2.92 -> 2.78 mm | 7 of 17 frames flagged invalid |
+
+(Training chunks: pixel MAE 3.4-5.3 mm, IoU 0.30-0.45 at the final parameters, 1-7 flagged frames each. The
+flagged frames are the `min_common_pixels: 50` footprint-overlap condition, the same transport effect as the
+depth term; the dataset-level strict status is therefore "evaluation_failed" at both parameter sets.) The
+fit's own in-run strict evaluation had failed for an environment reason (the evaluator is spawned with the
+plain interpreter inside the worker, where Taichi cannot import); the two `evaluate` runs above use a
+`sitecustomize` hook that redirects `sys.executable` to the glibc shim.
+
+My own measure (full forward simulation with the recorded tool motion, chamfer between simulated particles
+and the recorded cloud, both in the scene frame):
 
 | validation chunk | update 0: mean / last / max | final: mean / last / max |
 |---|---|---|
@@ -132,9 +152,11 @@ Files: `chunk{07,15,22}_{initial,final}.gif` (recorded | simulated | overlay, to
 
 ## Download
 
-`/workspace/runs/episode11/download/` on the GPU host (367 MB): `episode11_vm1000_e20k_fit_depthoff7/` (the fit
+`/workspace/runs/episode11/download/` on the GPU host (887 MB): `episode11_vm1000_e20k_fit_depthoff7/` (the fit
 run, with `optimizer_state.json`, `selected_parameters.json`, `result.json`, per-episode workers),
-`episode11_vm1000_e20k_fit_validsubset/` (diagnostic fit 1), `classification*.json`, `gifs/`.
+`episode11_vm1000_e20k_fit_depthoff7_evaluate{,_initial}/` (strict evaluations at the final and the initial
+parameters; `selected_parameters_initial.json`), `episode11_vm1000_e20k_fit_validsubset/` (diagnostic fit 1),
+`classification*.json`, `gifs/`.
 
 ## Earlier interim notes (superseded where the above differs)
 
