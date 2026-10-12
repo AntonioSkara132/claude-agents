@@ -331,6 +331,21 @@ reconstruction noise; the yield stress gets a weak one.
 8.7/11.7 mm at every snapshot. `..._framedepth8_squish` (chunk 24 in training, 07 in validation) stopped at update 3 in
 favour of the squish-validation run above.
 
+
+### Material fit with squish validation: stopped at update 13 (2026-10-12 14:30)
+`runs/episode11_vm_e20k_fit_yieldfit_framedepth8_squishval` traced the 7-chunk run point for point: E 20.0 -> 22.3 kPa,
+yield 1000 -> 1024 Pa, viscosity 1 -> 11.5, nu 0.47 -> 0.48 (the Adam ramp), minibatch objective 0.18-0.57 with no trend
+(batch composition only), chunk 25 forward chamfer 8.0 / 8.3 / 9.0 mm at update 0 and at update 10. Stopped to free the
+GPU; the launcher `/workspace/runs/episode11/run_fit_yieldfit8v.py` resumes it if the full 100 updates are wanted.
+
+**Conclusion of the Episode 11 calibration.** Episode 11 identifies the contact parameters (floor retention ~0.99 instead of
+the 0.9 bound; stickiness) and nothing else: E, yield stress and viscosity move the simulated dough by 0-13 mm across their
+whole ranges, under or at the 5-8 mm reconstruction noise, in pushing and in squishing chunks alike. The remaining shape
+error (dough stretched along the push) is the tool-contact model. Material calibration needs compression recordings with
+less reconstruction noise (Episode 18-type data), and the segment-boundary adjoint failure keeps the three cleanest
+squish chunks (25, 27, 28) out of any gradient fit until it is fixed on the solver side. The download folder
+(`/workspace/runs/episode11/download/`, 1.3 GB) holds every run, snapshot and classification.
+
 ## Earlier interim notes (superseded where the above differs)
 
 `episode11_vm1000_e20k_fit_depthoff7`: the requested settings (von Mises 1000 Pa, E0 20 kPa, batch size 4,
