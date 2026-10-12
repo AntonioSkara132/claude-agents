@@ -185,3 +185,28 @@ The CNN on the raster has the lowest flicker of all (1.3 mm next frame, 2.1 mm f
 accuracy of the PointNets (11.3 / 21.5 / 22.2) and the best masked raw (30.2) at flicker 1.7 / 2.7. Every height-map
 variant beats retrieval-best on start and flicker; none loses on any measure beyond the seed spread. Checkpoints:
 `/workspace/runs/heightmap_target/{hmocc,cnn}_seed{27,7,17}_out/vinn_rbf/checkpoint.pt`; dom_retrieval commit 610b7b3.
+
+
+### Height-map CNN: sampling-hole fix (splat / coarser cells), 2026-10-12 evening
+
+A live test by the robot-side session found the 5 mm CNN the least steady policy on the real camera: live, the policy draws
+a fresh random 1024 of ~7600 points per frame, so about 20 % of the raster's occupied cells change between two samples of
+the same frame (our dataset holds one fixed, evenly covering 1024-point subsample per frame, so the offline flicker test
+could not show it). Fix in training: a k x k splat of every point (`encoder.splat`, also in the pretraining target) or 10 mm
+cells. New offline measure "subsample jitter": stroke change between two random 60 % subsets of the same frame (refilled).
+3 seeds, test split; flicker as before.
+
+| encoder | measured start / shape / raw / orient | masked raw | subsample jitter mm / weight overlap | flicker next / +5 frames mm |
+|---|---|---|---|---|
+| retrieval-best | 13.6 / 21.7 / 22.6 / 5.89 | 30.6 | 2.4 / 0.80 | 3.5 / 7.5 |
+| PointNet + height map + occlusion | 11.3 / 21.5 / 22.2 / 5.79 | 30.2 | 1.0 / 0.92 | 1.7 / 2.7 |
+| CNN, 5 mm, no splat | 11.3 / 21.7 / 22.3 / 5.68 | 31.1 | 0.8 / 0.94 | 1.3 / 2.1 |
+| CNN, 5 mm, splat 3 | 12.5 / 22.2 / 22.9 / 5.80 | 29.8 | 0.9 / 0.94 | 1.6 / 2.1 |
+| CNN, 5 mm, splat 5 | 12.0 / 22.0 / 23.1 / 5.85 | 30.4 | 0.9 / 0.92 | 1.3 / 2.0 |
+| CNN, 10 mm cells | 12.3 / 22.2 / 23.1 / 5.80 | 29.2 | 1.1 / 0.91 | 1.2 / 2.5 |
+
+Offline the splat and coarse-cell variants are ties on jitter and flicker (0.8-1.1 mm, 1.2-1.6 mm) and 0.7-1.2 mm worse on
+the measured start than the plain 5 mm CNN; the offline proxy cannot reproduce the live hole pattern, so the live test of
+the splat-3 / 10 mm checkpoints decides. Checkpoints: `/workspace/runs/heightmap_target/cnn{splat3,splat5,cells30}_seed{27,7,17}_out/vinn_rbf/checkpoint.pt`;
+dom_retrieval commit with the splat option: see git log (after 610b7b3). Deployment-side alternative that needs no
+retraining: feed the CNN all live points (the raster is independent of N) or farthest-point-sample the 1024.

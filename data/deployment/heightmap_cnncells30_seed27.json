@@ -1,0 +1,33 @@
+{
+  "checkpoint": "/workspace/runs/heightmap_target/cnncells30_seed27_out/vinn_rbf/checkpoint.pt",
+  "test_segments": 125,
+  "pose_measured": {
+    "start_mm": 11.932848412701217,
+    "shape_mm": 21.765838640503787,
+    "raw_mm": 23.433521546962485,
+    "orientation_deg": 5.570170855179073,
+    "motion_size": 0.8229218429896616,
+    "shape_spread_pred_mm": 12.05611560626971,
+    "shape_spread_true_mm": 18.738220368819995,
+    "max_retrieval_weight": 0.07591050863265991,
+    "uniform_weight": 0.002288329519450801,
+    "duration_median_error": 0.11487633538064963
+  },
+  "pose_masked": {
+    "start_mm": 24.457597270514434,
+    "shape_mm": 26.103584526994833,
+    "raw_mm": 29.614526267815656,
+    "orientation_deg": 6.662235586799336,
+    "motion_size": 0.7592791934068659,
+    "shape_spread_pred_mm": 6.11413761786682,
+    "shape_spread_true_mm": 18.738220368819995,
+    "max_retrieval_weight": 0.016817066818475723,
+    "uniform_weight": 0.002288329519450801
+  },
+  "chained": {
+    "segments": 116,
+    "raw_mm_measured": 23.17176860812192,
+    "raw_mm_fed_back": 45.16280400281364,
+    "raw_mm_masked": 27.839678672071646
+  }
+}
