@@ -150,9 +150,82 @@ far as the recordings do; widening the bounds or changing the tool-contact model
 Files: `chunk{07,15,22}_{initial,final}.gif` (recorded | simulated | overlay, top-down),
 `chunk07_perspective_preview.gif` (renderer view), `chunk07_perspective_initial_vs_final_lastframe.png`.
 
+## Re-fit with widened contact bounds (2026-10-12) -- the main result now
+
+Why: in the first fit five of six parameters sat on their upper bounds, and a direct test on validation chunk 07
+showed floor retention was the binding one (chamfer last-frame 15.2 mm at the bound 0.9, 11.8 mm at 0.99, 11.1 mm
+at 0.999; stickiness beyond its bound changed nothing). In the solver the tangential velocity is multiplied by
+`floor_retention` on every floor-contact substep (`solver.py:547`, 0.2 ms substeps), so 0.9 is a 10 % loss per
+substep: the dough is glued to the table unless a tool is pushing it. Every Episode 11 chunk transports the dough
+57-219 mm (footprint overlap first/last frame 0.00-0.16 in 17 of 18 chunks; only chunk 25 kneads in place), so
+this bound limits the whole episode.
+
+Setup: identical to the 7-chunk depth-off fit (von Mises 1000 Pa, E0 20 kPa, batch 4, f64, lr 0.01, 100 updates,
+training 02 04 05 08 21 23 26, validation 07 15 22) except `floor_retention` bounds 0.2-0.999 (was 0.9) and
+`tool_stickiness` 0-1 (was 0.3). Datasets `*_depthoff_7chunks_widebounds_v1.json` and `*_widebounds_cont69_v1.json`.
+
+Execution note: the run was deterministic and identical to the first fit until floor retention reached 0.9 at
+update 10. At update 69 (10:43) it aborted with "Experiment sources changed during episode execution": another
+session edited `loss.py` and `dataset_config.py` in the shared tree (an opt-in `depth_reference: frame` option;
+the default path is byte-identical and our dataset has the depth term off, so the objective is unchanged). The
+remaining 31 updates were run as a second run starting from the update-69 parameters with a fresh Adam state
+(`runs/episode11_vm1000_e20k_fit_depthoff7_widebounds` 69 updates + `..._widebounds_cont69` 31 updates).
+The fresh optimizer state moved the parameters noticeably in those 31 updates (see below); a true continuation
+needs `scripts/continue_minibatch_fit.py`, which requires a cleanly finished original run.
+
+1. Final `parameters_after` (update 100 = continuation update 31):
+
+| parameter | first fit (old bounds) | update 69 | **final** | bounds |
+|---|---|---|---|---|
+| youngs_modulus | 14 979 | 25 798 | **30 881 Pa** | 2 000 - 60 000 |
+| poisson_ratio | 0.490 (bound) | 0.490 | **0.490** (bound) | 0.45 - 0.49 |
+| viscosity | 59.5 (bound) | 24.8 | **53.9 Pa s** | 0 - 60 |
+| floor_retention | 0.900 (bound) | 0.9914 | **0.9699** | 0.2 - 0.999 |
+| tool_friction_coefficient | 1.000 (bound) | 0.907 | **0.871** | 0.5 - 1.0 |
+| tool_stickiness | 0.300 (bound) | 0.437 | **0.694** | 0 - 1 |
+
+Only nu remains on a bound. Floor retention settles at 0.97-0.99 (interior), friction comes off its bound.
+
+2. Loss. Minibatch objective: the two alternating batches went 0.68 / 0.39 (update 1-2) -> 0.54 / 0.10 (update
+68-69) -> ~0.45 / 0.06 at the end; the hard batch is dominated by chunk 02, whose recording has a 207 mm
+centroid jump between two consecutive frames (reconstruction glitch; its objective stays at 1.07 in every fit).
+Per-chunk differentiable objective at the final parameters (strict `evaluate`): training 02 1.068, 04 0.065,
+05 0.308, 08 0.133, 21 0.080, 23 0.302, 26 0.133 (mean 0.298; first fit 0.424; update 0 0.518);
+**validation 07 0.382, 15 0.217, 22 0.197 (mean 0.265; first fit 0.473; update 0 0.603)**. The widened bounds
+cut the validation objective by a further 44 %, the same relative gain as on training.
+
+3. Validation rec-to-sim at the final parameters:
+
+| chunk | chamfer mean / last / max (mm), update 0 -> first fit -> **wide bounds** | pixel MAE (strict) first fit -> wide | pixel IoU |
+|---|---|---|---|
+| 07 | 14.7/21.8/24.0 -> 11.9/15.2/18.3 -> **9.5/12.4/12.7** | 5.97 -> 4.73 mm | 0.334 -> 0.416 |
+| 15 | 12.8/21.8/22.1 -> 11.8/18.8/19.7 -> **8.9/11.5/12.3** | 5.72 -> 5.36 | 0.339 -> 0.451 |
+| 22 | 11.1/19.9/21.4 -> 9.5/15.5/16.2 -> **7.4/9.1/9.9** | 2.99 -> 2.90 | 0.412 -> 0.510 |
+
+Reconstruction error alone is 5-8 mm, so the last-frame gap is now 2-5 mm above the floor set by the recording.
+The strict evaluator still reports "evaluation_failed" at the dataset level for the same `min_common_pixels`
+footprint-overlap reason as before (1-8 flagged frames per chunk); chunk 07 completes with all frames valid.
+
+Progress along the fit (chunk 07 chamfer mean/last/max at the parameters of update N, recorded tool motion):
+u0 14.7/21.8/24.0, u10 12.6/15.9/19.9, u20 8.9/11.6/11.6, u30 9.7/12.1/13.3, u40 8.8/11.7/11.7, u50 8.9/11.8/11.8,
+u60 8.7/11.6/11.6, u79 9.8/12.5/13.5, u89 9.8/12.6/13.6, u99 9.5/12.4/12.8. The chamfer was essentially converged
+by update 20 (floor retention ~0.99); the later drift of E, viscosity and stickiness changes it by <1 mm, i.e.
+those parameters are weakly identified by this objective, floor retention is the one that matters.
+
+4. Completed all 100 updates (69 + 31, one abort for the external reason above, no numerical errors; backward
+replay consistent in both runs). 5. Output: 69 MB + 63 MB for the two runs, plus 480 MB for the strict evaluation.
+
+Recommendation for the TaichiDough side: keep the widened floor-retention bound (or better, fit
+`log(1 - floor_retention)`: the per-substep form makes the parameter extremely non-linear near 1), drop or mask
+chunk 02's glitch frame, and note the other session's finding that the non-finite adjoints on chunks 06/09/10/
+14/16/17/18/25/27 are checkpoint-segment-boundary replay failures (they move with `segment_length`), not physics.
+
+GIFs: `download/gifs/chunk{07,15,22}_wbfinal.gif` (final wide-bounds parameters),
+`download/gifs/widebounds_progress/` (chunk 07 every 10 updates, both runs).
+
 ## Download
 
-`/workspace/runs/episode11/download/` on the GPU host (887 MB): `episode11_vm1000_e20k_fit_depthoff7/` (the fit
+`/workspace/runs/episode11/download/` on the GPU host (1.3 GB; wide-bounds runs `episode11_vm1000_e20k_fit_depthoff7_widebounds{,_cont69}`, their strict evaluation `..._cont69_evaluate`, `selected_parameters_u69.json`): `episode11_vm1000_e20k_fit_depthoff7/` (the fit
 run, with `optimizer_state.json`, `selected_parameters.json`, `result.json`, per-episode workers),
 `episode11_vm1000_e20k_fit_depthoff7_evaluate{,_initial}/` (strict evaluations at the final and the initial
 parameters; `selected_parameters_initial.json`), `episode11_vm1000_e20k_fit_validsubset/` (diagnostic fit 1),
