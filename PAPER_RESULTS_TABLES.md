@@ -160,3 +160,28 @@ Do not add these to the main paper table without new verification or matched rer
 - [ ] Keep feed-forward policies separate from methods that use simulator search at test time.
 - [ ] Keep direct-sweep and leave-one-chunk-out simulator reruns separate.
 - [ ] Define whether the paper's primary method is retrieval or the selected CVAE before using “our method” in captions or conclusions.
+
+
+### Five encoder variants (2026-10-12, later the same day): occlusion augmentation and a CNN on the raster
+
+Two more variants on top of the table above, same protocol (3 seeds, test split, flicker on 60 segments).
+"height map only + occlusion": PointNet, height-map-only pretraining, and with probability 0.5 the input cloud loses 15-40 %
+of its points on one side of a random vertical half-plane while the target stays the full raster
+(`configs/deformpath_retrieval_heightmap_occlusion.yaml`). "height-map CNN": the point encoder is replaced by a four-block CNN
+(67k parameters) on the 60x60 occupancy + mean-height raster itself (`encoder.kind: heightmap_cnn`,
+`configs/deformpath_retrieval_heightmap_cnn.yaml`), pretrained on the height-map target alone.
+
+| encoder | measured start / shape / raw mm / orient deg | masked start / shape / raw / orient | flicker next / +5 frames mm | weight overlap next / +5 |
+|---|---|---|---|---|
+| retrieval-best (InfoNCE) | 13.6 / 21.7 / 22.6 / 5.89 | 24.3 / 26.6 / 30.6 / 6.96 | 3.5 / 7.5 | 0.73 / 0.53 |
+| InfoNCE + height map w0.3 | 12.8 / 21.7 / 23.0 / 5.93 | 24.1 / 26.8 / 30.2 / 7.04 | 2.7 / 5.3 | 0.81 / 0.66 |
+| height map only | 11.8 / 21.8 / 22.8 / 5.80 | 25.3 / 26.5 / 31.3 / 6.99 | 1.8 / 2.9 | 0.88 / 0.79 |
+| height map only + occlusion | 11.3 / 21.5 / 22.2 / 5.79 | 24.5 / 26.5 / 30.2 / 7.01 | 1.7 / 2.7 | 0.88 / 0.79 |
+| height-map CNN | 11.3 / 21.7 / 22.3 / 5.68 | 25.6 / 26.6 / 31.1 / 6.91 | 1.3 / 2.1 | 0.91 / 0.85 |
+
+The CNN on the raster has the lowest flicker of all (1.3 mm next frame, 2.1 mm five frames later; retrieval overlap 0.91 /
+0.85) and the best orientation (5.68 deg), with measured start / shape / raw tied with the best PointNet variants
+(11.3 / 21.7 / 22.3) and the masked numbers tied with retrieval-best. Occlusion augmentation gives the best measured
+accuracy of the PointNets (11.3 / 21.5 / 22.2) and the best masked raw (30.2) at flicker 1.7 / 2.7. Every height-map
+variant beats retrieval-best on start and flicker; none loses on any measure beyond the seed spread. Checkpoints:
+`/workspace/runs/heightmap_target/{hmocc,cnn}_seed{27,7,17}_out/vinn_rbf/checkpoint.pt`; dom_retrieval commit 610b7b3.

@@ -1,0 +1,18 @@
+== hmocc_s7 (60 test segments, pose fixed)
+   stroke-shape change: resampling the same frame 0.0 mm | next frame 1.7 mm | 5 frames later 2.9 mm | between different segments 15.2 mm | averaging 6 frames vs the next 5: 0.2 mm
+   retrieval-weight overlap with frame 0: next frame 0.86, 5 frames later 0.76 (1 = identical weights)
+== cnn_s7 (60 test segments, pose fixed)
+   stroke-shape change: resampling the same frame 0.0 mm | next frame 1.8 mm | 5 frames later 3.0 mm | between different segments 17.8 mm | averaging 6 frames vs the next 5: 0.3 mm
+   retrieval-weight overlap with frame 0: next frame 0.86, 5 frames later 0.75 (1 = identical weights)
+== hmocc_s17 (60 test segments, pose fixed)
+   stroke-shape change: resampling the same frame 0.0 mm | next frame 2.1 mm | 5 frames later 3.1 mm | between different segments 12.7 mm | averaging 6 frames vs the next 5: 0.4 mm
+   retrieval-weight overlap with frame 0: next frame 0.85, 5 frames later 0.74 (1 = identical weights)
+== cnn_s17 (60 test segments, pose fixed)
+   stroke-shape change: resampling the same frame 0.0 mm | next frame 0.7 mm | 5 frames later 1.0 mm | between different segments 9.4 mm | averaging 6 frames vs the next 5: 0.1 mm
+   retrieval-weight overlap with frame 0: next frame 0.95, 5 frames later 0.93 (1 = identical weights)
+== hmocc_s27 (60 test segments, pose fixed)
+   stroke-shape change: resampling the same frame 0.0 mm | next frame 1.3 mm | 5 frames later 2.0 mm | between different segments 11.0 mm | averaging 6 frames vs the next 5: 0.2 mm
+   retrieval-weight overlap with frame 0: next frame 0.92, 5 frames later 0.86 (1 = identical weights)
+== cnn_s27 (60 test segments, pose fixed)
+   stroke-shape change: resampling the same frame 0.0 mm | next frame 1.4 mm | 5 frames later 2.3 mm | between different segments 10.5 mm | averaging 6 frames vs the next 5: 0.2 mm
+   retrieval-weight overlap with frame 0: next frame 0.92, 5 frames later 0.86 (1 = identical weights)
