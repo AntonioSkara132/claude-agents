@@ -290,6 +290,47 @@ chamfer is 8.7/11.7 mm at updates 0, 10, 20: the objective is flat along this di
 GIFs: `download/gifs/chunk07_bounds_*.gif`, `chunk07_shape_*.gif`; per-10-update snapshots of both fits in
 `download/progress/`.
 
+
+## Update 2026-10-12 evening: the squishing chunks (23-28) and the segment-boundary adjoint failure
+
+### The material information is in the chunks the fit never saw
+Dough height (95th percentile, first -> last frame) and travel per chunk: 23 29->28 mm / 57 mm (in fit); **24 29->44 mm
+(+15, piling) / 60 mm (not in the request's dataset)**; **25 46->38 mm (-11, pressed) / 22 mm (adjoint NaN)**; 26 38->41 / 122 mm
+(in fit); 27 39->37 / 71 mm (adjoint NaN); 28 38->43 / 80 mm (not in the dataset). The pushing chunks are all ~30 mm tall
+with no height change. So E and the yield stress can only act in 24, 25, 27, 28, and the original 7-chunk fit contained
+none of them.
+
+### Why 24 and 28 were missing: one empty observation each
+`validation.json` excluded them with "Observation 18 (24) / 25 (28) has only 0 valid pixels after filtering" (dough fully
+occluded in one frame); their reconstructions are fine (densities 1403 and 1315 kg/m3). Fix: configs with the training
+window ending before the empty frame (24: frames 1-16, 28: 1-23), built from the chunk-23 config with their own recording,
+reconstruction, hashes and fingerprint (`configs/episode11_dynamics_chunk{24,28}_von_mises_1000pa_yieldfit_framedepth_v1.json`).
+Chunk 24 passes the gradient preflight (finite adjoint); chunk 28 does not (below).
+
+### The non-finite adjoints are segment-boundary failures, not physics
+Failure steps: chunk 25 at global step 64, chunk 27 at 512, chunk 28 at 3264 (= 51 x 64), chunk 09 at 0, all with
+segment_length 64; identical under stretch-clamp and von Mises. Chunk 25 re-run with segment_length 32 fails at step 96
+(= 3 x 32) and with 128 at step 0: the failure moves with the segment boundary. 72000 non-finite entries in x and v each
+time. This is the checkpoint replay in the adjoint; it needs a solver-side fix (reported to the TaichiDough side). Files:
+`download/classification_squish_24_28.json`, `download/classification_chunk25_seg{32,128}.json`.
+
+### Fit now running: 8 training chunks incl. 24, squishing chunks as validation
+`runs/episode11_vm_e20k_fit_yieldfit_framedepth8_squishval`, dataset
+`dataset_episode11_dynamics_temporal_von_mises_yieldfit_framedepth_8train_squishval_v1.json`: training 02 04 05 08 21 23 26 + 24,
+**validation 25, 27, 28** (forward only, so their broken adjoints do not matter) + 15, 22; material-only fit (E, nu, viscosity,
+yield; contact fixed at the wide-bounds values), frame-referenced depth term. Live page:
+https://claude.ai/artifact/Dk6Mna4jcNTut27xxpdM6B (chunk 25 and chunk 07 forward snapshots every 10 updates).
+First batch with chunk 24 (update 2), per-chunk gradients (x parameter scale): chunk 24 objective 0.154 (lowest of all),
+dL/dyield x 1 kPa = +0.021 (wants a softer yield; the largest yield gradient in the batch, but still small),
+dL/dE x E = -0.005 (flat), dL/dnu = -0.11. Even the clearest squishing chunk gives E no leverage at the 5-8 mm
+reconstruction noise; the yield stress gets a weak one.
+
+### Stopped runs
+`episode11_vm_e20k_fit_yieldfit_framedepth7` (no squish chunks) stopped at update 37: E 20 -> 26.7 kPa, yield 1000 ->
+1190 Pa, viscosity 1 -> 29, nu at 0.49; objective flat (repeated batch compositions within 0.003), chunk 07 chamfer
+8.7/11.7 mm at every snapshot. `..._framedepth8_squish` (chunk 24 in training, 07 in validation) stopped at update 3 in
+favour of the squish-validation run above.
+
 ## Earlier interim notes (superseded where the above differs)
 
 `episode11_vm1000_e20k_fit_depthoff7`: the requested settings (von Mises 1000 Pa, E0 20 kPa, batch size 4,
