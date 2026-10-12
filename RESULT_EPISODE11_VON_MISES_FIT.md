@@ -158,6 +158,65 @@ run, with `optimizer_state.json`, `selected_parameters.json`, `result.json`, per
 parameters; `selected_parameters_initial.json`), `episode11_vm1000_e20k_fit_validsubset/` (diagnostic fit 1),
 `classification*.json`, `gifs/`.
 
+
+## Update 2026-10-12 afternoon: what limits the fit (bounds, transport, shape)
+
+### Every chunk transports the dough
+Recorded centroid travel over a chunk (table plane), footprint overlap first/last frame on 5 mm cells: training chunks
+02 174 mm (0.00), 04 74 (0.02), 05 83 (0.01), 08 121 (0), 21 104 (0), 23 57 (0.16), 26 123 (0); validation 07 90 (0.05),
+15 174 (0), 22 127 (0); the adjoint-NaN chunks 06/09/10/14/16/17/18/27 71-188 mm (0); only chunk 25 kneads in place
+(22 mm, 0.43). Chunk 02 has a 207 mm centroid jump between two consecutive frames (reconstruction glitch); it is the
+chunk with the worst objective (1.07) and should be dropped or masked in future fits.
+
+### Floor retention bound was the binding constraint
+`solver.py` multiplies the tangential velocity by `floor_retention * (1 - floor_stickiness)` on every 0.2 ms floor-contact
+substep, so 0.9 is a 10 %/substep loss: the dough is glued to the table unless a tool pushes it. Chunk 07, fitted E/nu/
+viscosity, recorded tool motion, chamfer sim-vs-recorded (mean / last frame, mm): floor 0.80 14.7/21.8; 0.90 (bound)
+11.9/15.2; 0.99 9.1/11.8; 0.999 8.2/11.1; stickiness 0.6 at floor 0.9 11.4/15.2 (no effect). Reconstruction error alone
+is 5-8 mm. Recommendation for the solver: fit log(1 - floor_retention), the per-substep form is extremely nonlinear near 1.
+
+### Re-fit with widened bounds (floor_retention 0.2-0.999, tool_stickiness 0-1)
+`runs/episode11_vm1000_e20k_fit_depthoff7_widebounds` (same 7 chunks, depth term off). Identical to the first fit until
+floor retention crossed 0.9 at update 10, then: update 20 floor 0.994, chunk 07 chamfer 8.9/11.6 mm; flat afterwards
+(update 60: 8.7/11.6; parameters at update 68: E 25.8 kPa, viscosity 24.8, floor 0.991, friction 0.907, stickiness 0.437).
+The run aborted at update 69 on TaichiDough's source-fingerprint check because the files below were edited in the shared
+tree while it ran (my mistake); the other session continues it as `..._widebounds_cont69` (31 updates, fresh Adam).
+Validation objective at update 68 vs the first fit's final: not yet evaluated strictly; chunk 07 chamfer 15.2 -> 11.6 mm.
+
+### Shape: the elongation is tool contact, not material
+With transport fixed, the simulated chunk 07 dough is stretched along the push direction (last frame extent 128 x 221 mm,
+footprint 96 cm2, height 41 mm) while the recorded dough is compact (159 x 125 mm, 106 cm2, 33 mm). Forward sweep at the
+fitted parameters (reference: E 25 kPa, yield 3000 Pa, viscosity 20, stickiness 0.434), mean particle displacement of the
+last frame relative to the reference and the extent along the push:
+
+| change | mean displacement | extent along push |
+|---|---|---|
+| yield stress 3000 -> 5000 Pa | 0.00 mm | 221 mm |
+| yield stress 3000 -> 200 Pa | 13.1 mm | 209 |
+| E 25 -> 60 kPa | 1.8 mm | 224 |
+| E 25 -> 5 kPa (yield 5000) | 6.4 mm | 211 |
+| viscosity 20 -> 60 | 0.3 mm | 221 |
+| **tool stickiness 0.434 -> 0** | **33 mm** | **199** |
+
+Plasticity is active (yield 200 Pa moves the dough 13 mm) but the fitted range 1-5 kPa is nearly irrelevant for this
+loading, E and viscosity move particles by millimetres, and stickiness is the only parameter that changes the shape
+appreciably; even at 0 the dough stays 60 % too long. The tool drags the dough along its path. Fixing the shape needs the
+tool-contact model (or its stickiness/adhesion parameterisation), not material bounds.
+
+### Yield-stress fit with a frame-referenced depth term (running)
+Code (shared tree, both uncommitted): `loss.py` option `depth_reference: "frame"` (current rendered depth vs current
+observed depth on all observed pixels; the default `"initial"` is unchanged; gradient checked by finite differences),
+`dataset_config.py` schema v4 = v2 physical names + `von_mises_yield_stress_pa`. Dataset
+`dataset_episode11_dynamics_temporal_von_mises_yieldfit_framedepth_7chunks_v1.json`: contact fixed at the re-fit's update-68
+values, fitted E (20 kPa), nu, viscosity, yield (1000 Pa, bounds 200-5000), depth weight 1.0 frame-referenced, coverage
+0.5, distance 0.5. Preflight passes on all 10 chunks (the frame-referenced term does not need footprint overlap).
+`runs/episode11_vm_e20k_fit_yieldfit_framedepth7`, update 29/100: E 25.5 kPa, yield 1157 Pa, viscosity 23, nu 0.49 (bound);
+all gradients push the material stiffer, but repeated batch compositions return the same loss to 0.003 and chunk 07
+chamfer is 8.7/11.7 mm at updates 0, 10, 20: the objective is flat along this direction, as the sweep predicts.
+
+GIFs: `download/gifs/chunk07_bounds_*.gif`, `chunk07_shape_*.gif`; per-10-update snapshots of both fits in
+`download/progress/`.
+
 ## Earlier interim notes (superseded where the above differs)
 
 `episode11_vm1000_e20k_fit_depthoff7`: the requested settings (von Mises 1000 Pa, E0 20 kPa, batch size 4,
