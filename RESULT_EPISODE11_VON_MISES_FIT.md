@@ -150,7 +150,7 @@ far as the recordings do; widening the bounds or changing the tool-contact model
 Files: `chunk{07,15,22}_{initial,final}.gif` (recorded | simulated | overlay, top-down),
 `chunk07_perspective_preview.gif` (renderer view), `chunk07_perspective_initial_vs_final_lastframe.png`.
 
-## Re-fit with widened contact bounds (2026-10-12) -- the main result now
+## Re-fit with widened contact bounds (2026-10-12) -- the main result now (use the update-69 parameters, see the correction below)
 
 Why: in the first fit five of six parameters sat on their upper bounds, and a direct test on validation chunk 07
 showed floor retention was the binding one (chamfer last-frame 15.2 mm at the bound 0.9, 11.8 mm at 0.99, 11.1 mm
@@ -211,6 +211,23 @@ u0 14.7/21.8/24.0, u10 12.6/15.9/19.9, u20 8.9/11.6/11.6, u30 9.7/12.1/13.3, u40
 u60 8.7/11.6/11.6, u79 9.8/12.5/13.5, u89 9.8/12.6/13.6, u99 9.5/12.4/12.8. The chamfer was essentially converged
 by update 20 (floor retention ~0.99); the later drift of E, viscosity and stickiness changes it by <1 mm, i.e.
 those parameters are weakly identified by this objective, floor retention is the one that matters.
+
+**Correction after the strict evaluation at update 69: the update-69 parameters are the better set and are the
+ones to use.** The continuation's fresh Adam state moved E, viscosity and stickiness and made every chunk worse:
+
+| | update 69 (`selected_parameters_u69.json`) | update 100 (continuation) |
+|---|---|---|
+| parameters | E 25 798, nu 0.49, visc 24.8, floor 0.9914, friction 0.907, stickiness 0.437 | E 30 881, nu 0.49, visc 53.9, floor 0.970, friction 0.871, stickiness 0.694 |
+| training objective, mean | **0.268** (02 1.124, 04 0.069, 05 0.264, 08 0.076, 21 0.032, 23 0.238, 26 0.075) | 0.298 |
+| validation objective 07 / 15 / 22 | **0.296 / 0.129 / 0.109 (mean 0.178)** | 0.382 / 0.217 / 0.197 (mean 0.265) |
+| validation chamfer mean/last/max, 07 | **8.7 / 11.7 / 11.7** | 9.5 / 12.4 / 12.7 |
+| 15 | **7.8 / 9.0 / 9.6** | 8.9 / 11.5 / 12.3 |
+| 22 | **6.7 / 7.3 / 8.0** | 7.4 / 9.1 / 9.9 |
+| strict pixel IoU 07 / 15 / 22 | **0.463 / 0.523 / 0.595** | 0.416 / 0.451 / 0.510 |
+
+So relative to the first fit the validation objective goes 0.473 -> 0.178 (-62 %) and the last-frame chamfer on
+the validation chunks 15-19 mm -> 7-12 mm, with the reconstruction floor at 5-8 mm. GIFs at these parameters:
+`download/gifs/chunk{07,15,22}_wbu69.gif`; strict evaluation `download/..._cont69_evaluate_u69/`.
 
 4. Completed all 100 updates (69 + 31, one abort for the external reason above, no numerical errors; backward
 replay consistent in both runs). 5. Output: 69 MB + 63 MB for the two runs, plus 480 MB for the strict evaluation.
