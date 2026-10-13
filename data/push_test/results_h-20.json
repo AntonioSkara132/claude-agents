@@ -1,0 +1,26 @@
+{
+ "0.0": {
+  "push_shift_mm": 41.576382941257876,
+  "return_shift_mm": 28.774324744124968,
+  "push_back_mm": 12.802058197132908,
+  "frac_within_5cm_of_tool_at_end": 0.0,
+  "height_max_push_mm": 37.7003513276577,
+  "height_max_return_mm": 35.258326679468155
+ },
+ "0.1": {
+  "push_shift_mm": 51.36260827841189,
+  "return_shift_mm": 24.759609925450793,
+  "push_back_mm": 26.602998352961098,
+  "frac_within_5cm_of_tool_at_end": 0.0,
+  "height_max_push_mm": 39.27438706159592,
+  "height_max_return_mm": 36.911968141794205
+ },
+ "0.3": {
+  "push_shift_mm": 72.89755218130416,
+  "return_shift_mm": 17.832300090459384,
+  "push_back_mm": 55.065252090844794,
+  "frac_within_5cm_of_tool_at_end": 0.0,
+  "height_max_push_mm": 36.05159372091293,
+  "height_max_return_mm": 35.21958366036415
+ }
+}
