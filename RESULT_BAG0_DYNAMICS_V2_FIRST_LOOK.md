@@ -295,3 +295,9 @@ terms. Grid-144 check of the same five sets running; v5/grid-96 gradients of all
 v4 grid-48 shape-loss gradients on both squeezes (scaled s): p06 shape_rel E -0.023, nu +0.084, yield -0.029, tool
 friction +0.120, floor friction -0.356; p07 shape_rel E +0.089, nu -0.101, yield +0.014, frictions ~0.015. E is a
 leading material term on p07 (10-15x the original loss); the two squeezes disagree in sign on E and nu at grid 48.
+
+Grid-144 (box) check of the same five sets on p06, springback recorded +14 mm: start +12 (loss 0.320), E 60k/yield 10k
++16 (0.280), E 20k/yield 5k +16 (0.322), E 3k/yield 1k +22 (0.346), E 60k/yield 1k +7 (0.298). Grid 96 -> 144 changes
+the start point little (+11 -> +12) but the high-yield sets a lot (+9 -> +16): at 144 the yield stress starts to act on
+the recovery (elastic storage), so the recovery is not converged at 96 for stiff/high-yield dough. With the box, 144
+costs about the same as 96 per the benchmark; a fit intended to resolve yield should use 144.
