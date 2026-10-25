@@ -372,3 +372,12 @@ dough to squash), with the joint mean led by compromises (E 7-20 kPa, yield 200,
 absorbed by material parameters. Recommended data fix: one dough density (~1270 kg/m3) with mass from the reconstructed
 volume, and a check of p06's first-frame fill and p07's mass. Until then, material fits on the squeezes are not
 trustworthy; the fits launched tonight (fit A locally, fit B on Colab) should be read with this caveat.
+
+Why the squeezes start with the wrong volume (21:10, from the recorded clouds): per 5 mm cell top height at frame 0,
+p03 push mean 17.0 mm (most cells 15-20), p05 16.7 (15-20), **p06 13.4 (most cells 10-15)** with the same footprint
+(136-141 cm2): the p06 top surface is ~3.5 mm low across the whole dough, a depth/table offset in that part, and the
+floor-fill reconstruction therefore starts ~20 % short. **p07** frames 0-2 show a lump 25-40 mm tall (220 of 414
+cells at 30-40 mm, visible volume 293 cm3) that by frame 10 is 15-25 mm (187 cm3): the first frames contain ~100 cm3
+of non-dough (blade/arm/hand or a depth error), and the initial particles were built from them. Fixes: check the
+per-part depth/table offset (p06) and reconstruct p07 from a later clean frame (~10); then re-derive mass from a
+common density.
