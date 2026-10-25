@@ -273,3 +273,25 @@ GPU contention). Objective at 48 / 96 / 144: 0.336 / 0.321 / 0.310 (yield 300) a
 Running: gradient tests of all loss variants (original, first+last frame, frame-referenced depth, four shape variants)
 on p06/p07 at v5/grid 96, then the viscosity x E x yield sweep (512 sets) on the two squeezes at v5/grid 96
 (`/workspace/runs/bag0/v5/`). The grid-48 v4 sweep was stopped at 40 % (`v4/sweep/`, resumable).
+
+### Correction (19:30): the springback is a resolution effect, and grid 96 resolves it
+
+Same springback measurement on p06 at v5 / grid 96 (box): simulated width recovery after release, recorded +14 mm:
+
+| E | yield | grid 48 | grid 96 | loss at g96 |
+|---|---|---|---|---|
+| 20 kPa | 1 kPa (start) | +2 mm | **+11 mm** | 0.318 |
+| 20 kPa | 5 kPa | +2 | +12 | 0.315 |
+| 60 kPa | 10 kPa | +1 | +9 | 0.291 |
+| 60 kPa | 1 kPa | - | +8 | 0.307 |
+| 3 kPa | 1 kPa | +8 | +17 | 0.347 |
+
+At grid 96 the simulator recovers 8-17 mm depending on E (softer = more, as expected) with the recorded 14 mm inside
+the range; grid 48 suppressed the recovery entirely, which is what produced the earlier "no parameter can reproduce
+it" reading. So the squeeze parts are informative about E at grid 96 (the v5 grid box makes that cost ~2x grid 48),
+and the fit setup should be: v5, grid 96, shape-descriptor loss (relative to first frame, late-weighted) + original
+terms. Grid-144 check of the same five sets running; v5/grid-96 gradients of all loss variants on p06/p07 running.
+
+v4 grid-48 shape-loss gradients on both squeezes (scaled s): p06 shape_rel E -0.023, nu +0.084, yield -0.029, tool
+friction +0.120, floor friction -0.356; p07 shape_rel E +0.089, nu -0.101, yield +0.014, frictions ~0.015. E is a
+leading material term on p07 (10-15x the original loss); the two squeezes disagree in sign on E and nu at grid 48.
