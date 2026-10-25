@@ -168,3 +168,59 @@ yield (0.164 at 100-200 Pa -> 0.206 at 1.4 kPa) were not; best set 0.092 vs 0.14
 
 Gallery of all 34 chunks (perspective render + recorded-vs-simulated overlay, annotated): results page link
 "bag0 chunk gallery"; files `/workspace/runs/bag0/all_renders/`.
+
+
+## bag0 dynamics v4 (2026-10-25, 16:45): 15 motion parts with Kalman-refined poses
+
+Installed into the same worktree (package commit = tip `9f50bf1`; its source snapshot carries uncommitted edits in
+solver/state/checkpoint/calibrate/dataset_config, mainly an optional `grid_box_lower/cells` sub-box of the lattice,
+unused by the v4 configs; my three local patches kept). Same SDF cache keys as v2 (same meshes).
+
+Renders of all 15 parts (11 dataset + 4 test) at the starting parameters, perspective + recorded-vs-simulated overlay,
+with contact counters: gallery "bag0 v4 parts gallery" on the results page. Every dataset part now has tool contact
+in simulation (v2's no-contact chunks are gone); the two cut parts barely touch the dough (17 / 53 particle contacts
+over 36-38k steps, nothing yielded; the README notes the Kinova pose is filled on the deep part of the cut), chamfer
+recorded-vs-simulated 5-9 mm on pushes/kneads, peaks of 14-21 mm on the squeezes and cuts.
+
+Gradient sensitivities, all 11 dataset parts, f64 adjoint at the starting point (s = p * dL/dp; viscosity and
+adhesion omitted from the per-part table where |s| < 0.001):
+
+| part | split | loss | steps | E | nu | viscosity | tool friction | adhesion | floor friction | yield |
+|---|---|---|---|---|---|---|---|---|---|---|
+| p03_E1.3_push | train | 0.104 | 11175 | -0.0119 | -0.0314 | +0.0001 | -0.0108 | -0.0015 | +0.0954 | +0.0011 |
+| p05_E1.5_push | train | 0.208 | 11342 | -0.0012 | -0.0046 | +0.0000 | -0.0177 | -0.0019 | +0.1016 | +0.0033 |
+| p06_E1.6_squeeze | train | 0.328 | 19014 | -0.0018 | -0.0158 | +0.0000 | -0.0070 | +0.0009 | +0.0451 | -0.0015 |
+| p07_E2.1_squeeze | train | 0.313 | 27354 | +0.0092 | -0.0087 | +0.0000 | +0.0013 | -0.0003 | +0.0105 | +0.0020 |
+| p09_E4.1_knead | train | 0.087 | 14344 | -0.0005 | -0.0084 | +0.0000 | -0.0005 | -0.0001 | -0.0003 | +0.0003 |
+| p11_E4.3_knead | train | 0.088 | 4504 | +0.0023 | +0.0024 | -0.0000 | +0.0044 | -0.0000 | +0.0001 | +0.0004 |
+| p02_E1.2_push | valid | 0.182 | 10508 | +0.0033 | -0.0110 | -0.0002 | -0.0085 | -0.0021 | +0.0727 | -0.0147 |
+| p10_E4.2_knead | valid | 0.085 | 5838 | -0.0003 | -0.0020 | +0.0000 | +0.0006 | -0.0001 | +0.0003 | -0.0000 |
+| p13_E4.5_knead | valid | 0.086 | 5004 | +0.0021 | -0.0019 | -0.0000 | +0.0003 | -0.0000 | -0.0012 | +0.0000 |
+| p15_E6.1_cut | train | 0.130 | 38362 | -0.0000 | -0.0019 | +0.0000 | +0.0001 | -0.0000 | -0.0001 | +0.0000 |
+| p16_E7.1_cut | train | 0.200 | 36027 | -0.0033 | -0.0096 | +0.0000 | -0.0006 | -0.0001 | +0.0007 | -0.0000 |
+
+| parameter | mean abs s | max abs s | parts with abs s > 0.005 |
+|---|---|---|---|
+| E | 0.0033 | 0.0119 | 18% |
+| nu | 0.0089 | 0.0314 | 55% |
+| viscosity | 0.0000 | 0.0002 | 0% |
+| tool friction | 0.0047 | 0.0177 | 36% |
+| tool adhesion | 0.0007 | 0.0021 | 0% |
+| floor friction | 0.0298 | 0.1016 | 45% |
+| yield | 0.0021 | 0.0147 | 9% |
+
+Pairs with |r| > 0.7: viscosity ~ yield (r = +0.92), tool friction ~ floor friction (r = -0.95), tool adhesion ~ floor friction (r = -0.76). Singular values of the column-normalised Jacobian: [2.757, 1.753, 1.001, 0.83, 0.667, 0.211, 0.067].
+
+Reading, compared with v2: the refined poses did not make the material parameters more visible. Floor friction is
+still the dominant parameter and only on the pushes and p06 (0.05-0.10); nu is the most broadly active (6 of 11
+parts, but all below 0.03); E, yield, tool friction are weak (max 0.012 / 0.015 / 0.018); viscosity and adhesion
+remain unidentifiable (< 0.0005). The kneads (p09-p13) and cuts are flat in every parameter (max |s| < 0.01) even
+though the tools now touch the dough: the recorded motion changes the top-view loss too little. The two squeezes
+have the largest losses (0.31-0.33) but small gradients: at the start point the simulated squeeze differs from the
+recording in a way no parameter direction removes (chamfer peaks 12-21 mm; see overlays). The smallest singular
+values (0.07, 0.21) again mean two parameter combinations are undetermined; tool friction and floor friction are
+almost perfectly anti-correlated here (r = -0.95). The v2 squeeze ep07_b c00, which carried most of the material
+signal in v2, has no counterpart in v4's parts.
+
+Sweep: viscosity x E x yield (8 x 8 x 8 = 512 sets, same axes as the Episode 18 sweep) running on the two squeeze
+parts only (p06, p07; 19k and 27k steps), 6 shards, forward f32, `/workspace/runs/bag0/v4/sweep/sweep_s*.jsonl`.
