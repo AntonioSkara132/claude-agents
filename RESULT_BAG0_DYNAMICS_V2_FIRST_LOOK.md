@@ -357,3 +357,18 @@ the material parameters leading terms: p06 E -0.07..-0.13, nu -0.38..-0.65, yiel
 loss); p07 yield +0.19..+0.29 (12-15 % of the loss), tool friction +0.07..0.09. E now has the same sign on both parts
 (both want a stiffer dough), unlike at grid 48; yield still disagrees between the parts (p06 wants higher, p07 lower),
 which is what the sweep at grid 144 will map. Viscosity and adhesion stay at zero in every variant.
+
+### Why the two squeezes disagree (21:00): initial volumes, not material
+
+Recorded first-frame cloud vs initial particle set (97.5 % extents) and the package's reconstructed volume (mass fixed
+0.3 kg): p03 push 126x104 h 24 mm / 127x106 h 21, fill 0.84, 1253 kg/m3; p05 push 125x101 h 23 / 127x104 h 21, 0.84,
+1297; p09 knead 102x92 h 30 / 105x97 h 27, 0.81, 1341; **p06 squeeze 124x102 h 23 / 127x106 h 19, fill 0.71, 1648**;
+**p07 squeeze 105x101 h 36 / 105x103 h 33, 0.83, 992**. p06's reconstruction is ~20 % under-filled (4 mm lower than
+its cloud, fill 0.71 vs 0.81-0.84 elsewhere); p07's cloud describes a 300 cm3 lump that at 0.3 kg has an impossible
+density of 992 (different episode E2: wrong mass for that dough, or non-dough in the first-frame cloud). The grid-144
+sweep (original loss) therefore prefers stiff/high-yield dough on p06 (best E 60 kPa, yield 10 kPa, 0.280; it wants
+the small dough to stand up) and soft dough on p07 (best E 2-7 kPa at yield 200 Pa, 0.22-0.24; it wants the oversized
+dough to squash), with the joint mean led by compromises (E 7-20 kPa, yield 200, 0.282). These are volume errors being
+absorbed by material parameters. Recommended data fix: one dough density (~1270 kg/m3) with mass from the reconstructed
+volume, and a check of p06's first-frame fill and p07's mass. Until then, material fits on the squeezes are not
+trustworthy; the fits launched tonight (fit A locally, fit B on Colab) should be read with this caveat.
