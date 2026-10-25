@@ -324,3 +324,36 @@ A wider band holds the dough (best p06 loss so far, 0.244) but acts as a 10-20 m
 instead of 58) and launches stiff/high-yield dough. Not usable as a fit knob; the thin-blade contact needs a solver-side
 treatment (detect in a band, enforce at the true surface, or a thicker proxy with compensated offset). The sweep and
 gradient tests keep the default band.
+
+
+### Loss variants at v5 / grid 96 (20:10): gradients on both squeezes
+
+Scaled sensitivity s = p dL/dp at the starting parameters (f64 adjoint, grid-96 box). Variants: baseline = original
+all-frames loss; firstlast_* = only first and last frame scored (initial- or frame-referenced depth); allframes_framedepth;
+shape_* = shape-descriptor loss (abs; relative to first frame; relative + late weighting; relative + original).
+
+| part | loss variant | value | E | nu | viscosity | tool friction | floor friction | yield |
+|---|---|---|---|---|---|---|---|---|
+| p06 | baseline | 0.319 | -0.014 | -0.063 | -0.000 | +0.002 | +0.036 | -0.005 |
+| p06 | firstlast_initdepth | 0.362 | -0.026 | -0.139 | -0.000 | -0.001 | +0.083 | -0.022 |
+| p06 | firstlast_framedepth | 0.537 | -0.031 | -0.170 | -0.000 | -0.012 | +0.091 | -0.016 |
+| p06 | allframes_framedepth | 0.449 | -0.017 | -0.078 | -0.000 | -0.002 | +0.039 | -0.003 |
+| p06 | shape_abs | 1.332 | -0.108 | -0.463 | +0.000 | +0.197 | -0.246 | -0.156 |
+| p06 | shape_rel | 0.954 | -0.074 | -0.375 | +0.001 | +0.222 | -0.248 | -0.114 |
+| p06 | shape_rel_late | 1.500 | -0.130 | -0.651 | +0.001 | +0.351 | -0.384 | -0.201 |
+| p06 | shape_rel_plus_orig | 1.272 | -0.088 | -0.438 | +0.000 | +0.224 | -0.213 | -0.118 |
+| p07 | baseline | 0.298 | +0.009 | -0.035 | +0.000 | -0.002 | +0.009 | +0.006 |
+| p07 | firstlast_initdepth | 0.247 | +0.012 | -0.033 | +0.000 | -0.004 | +0.012 | +0.003 |
+| p07 | firstlast_framedepth | 0.262 | +0.000 | -0.069 | +0.000 | -0.007 | +0.014 | +0.011 |
+| p07 | allframes_framedepth | 0.279 | -0.002 | -0.080 | +0.000 | -0.005 | +0.011 | +0.015 |
+| p07 | shape_abs | 1.340 | -0.059 | -0.031 | -0.000 | +0.086 | +0.019 | +0.189 |
+| p07 | shape_rel | 1.606 | -0.014 | +0.012 | -0.000 | +0.069 | +0.024 | +0.186 |
+| p07 | shape_rel_late | 1.983 | -0.022 | -0.019 | -0.000 | +0.092 | +0.023 | +0.294 |
+| p07 | shape_rel_plus_orig | 1.905 | -0.005 | -0.023 | -0.000 | +0.067 | +0.032 | +0.192 |
+
+Reading: at grid 96 even the original loss sees E and nu more (p06 E -0.014 vs -0.002 at grid 48, nu -0.063 vs -0.016).
+First/last-frame scoring doubles that again on p06 (E -0.03, nu -0.17, yield -0.02). The shape-descriptor variants make
+the material parameters leading terms: p06 E -0.07..-0.13, nu -0.38..-0.65, yield -0.11..-0.20 (8 %, 40 %, 13 % of the
+loss); p07 yield +0.19..+0.29 (12-15 % of the loss), tool friction +0.07..0.09. E now has the same sign on both parts
+(both want a stiffer dough), unlike at grid 48; yield still disagrees between the parts (p06 wants higher, p07 lower),
+which is what the sweep at grid 144 will map. Viscosity and adhesion stay at zero in every variant.
