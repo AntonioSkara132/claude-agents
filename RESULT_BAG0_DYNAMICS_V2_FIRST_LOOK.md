@@ -301,3 +301,26 @@ Grid-144 (box) check of the same five sets on p06, springback recorded +14 mm: s
 the start point little (+11 -> +12) but the high-yield sets a lot (+9 -> +16): at 144 the yield stress starts to act on
 the recovery (elastic storage), so the recovery is not converged at 96 for stiff/high-yield dough. With the box, 144
 costs about the same as 96 per the benchmark; a fit intended to resolve yield should use 144.
+
+### Thin-blade contact (19:45)
+
+Renders of p06/p07 at grid 96 and 144 (page "bag0 squeezes at grid 96/144"): at maximum squeeze the recorded dough is
+one block 52 mm tall between the blades; the simulated dough is 36-37 mm tall and a sheet of particles is extruded
+along the floor past one blade; by the end of p06 material lies on both sides of the blades, in p07 a trail follows
+the retracting Kinova blade. Leaked fraction (outside the recorded footprint + 20 mm) is small (1-3 %), the height
+deficit is the main effect. Cause in the code: the grid-node contact band is `tool_contact_padding` = 1.3 mm
+(`tool_grid_contact_padding` unset), against 2.6 mm blades and 10-21 mm cells, so the blade is porous on the grid and
+dough is held mainly by the per-particle push-out within 1.3 mm.
+
+Widening the grid band (`tool_grid_contact_padding`, SDF rebuilt with the larger extent) on p06 at grid 96:
+
+| band | start point: loss / springback / height / leaked | E 60k, yield 10k |
+|---|---|---|
+| 1.3 mm (default) | 0.318 / +11 mm / 36 mm / 1.7 % | 0.291 / +9 / - / - |
+| 5.2 mm (dx/2) | 0.303 / +10 / 28 / 1.0 % | 0.292 / +22 / 51 / 35 % leaked |
+| 10.4 mm (dx) | 0.244 / +3 / 37 / 1.3 % | 0.632 / +44 / 84 / 0 % |
+
+A wider band holds the dough (best p06 loss so far, 0.244) but acts as a 10-20 mm thick blade (over-squeezes to 42 mm
+instead of 58) and launches stiff/high-yield dough. Not usable as a fit knob; the thin-blade contact needs a solver-side
+treatment (detect in a band, enforce at the true surface, or a thicker proxy with compensated offset). The sweep and
+gradient tests keep the default band.
