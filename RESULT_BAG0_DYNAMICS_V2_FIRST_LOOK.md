@@ -381,3 +381,22 @@ cells at 30-40 mm, visible volume 293 cm3) that by frame 10 is 15-25 mm (187 cm3
 of non-dough (blade/arm/hand or a depth error), and the initial particles were built from them. Fixes: check the
 per-part depth/table offset (p06) and reconstruct p07 from a later clean frame (~10); then re-derive mass from a
 common density.
+
+### Grid-144 sweep (4x4x4, original loss, v5 box) complete; squeeze fits on hold (21:45)
+
+p06 (64 sets, start 0.320): best 0.280 at E 60 kPa / yield 10 kPa / viscosity 0; marginal by E 0.349 (2 kPa) -> 0.292
+(60 kPa), monotone, optimum on the grid's E bound; yield 10 kPa > 3 kPa > 1 kPa/200 once E is stiff; viscosity 0.002.
+p07 (64 sets): best 0.221 at E 2 kPa (any yield, viscosity 40); marginal by E 0.225 (2 kPa) -> 0.299 (60 kPa), the
+opposite direction; yield 200 best (0.242) vs 0.274 above. Joint mean: best 0.275 at E 60 kPa / yield 200 / viscosity
+5 (p06 0.302, p07 0.247), a compromise that is neither part's optimum. Renders of both parts at p06's best set (page
+"bag0 squeezes"): p06 stands 45 mm (36 at start, 52 recorded), p07 stands 39 mm (31 recorded).
+
+Agreed diagnosis with the host-side analysis of the recorded clouds: p06 is a sound squeeze (solid ~11 mm pancake, no
+step from p05, 182 cm3 consistent with its own cloud); p07's first ~10 frames carry stale depth after the preceding
+lift (height decays 30 -> 18 mm while the RGB footprint is current), so its initial particles are built from
+inflated frames (302 cm3): start p07 at frame ~10. The floor-fill volume of the same lump wanders 122-225 cm3 over
+ep01 (p01 worst), so every part's starting volume carries a ~25 % error; a common fixed lump volume (scale each
+reconstruction in height, keep footprint) is the consistent convention if the mass/lump is the same for the bag.
+Decision: the 100-update squeeze fits (fit A local, fit B Colab) are on hold until p07's start and the volume
+convention are fixed; the sweep, re-scoring and renders stand as diagnostics. The p06 optimum on the E bound is the
+loss asking for more volume during the squeeze (recorded block at max squeeze ~280 cm3, likely dough + blade points).
