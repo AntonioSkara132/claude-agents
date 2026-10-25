@@ -224,3 +224,52 @@ signal in v2, has no counterpart in v4's parts.
 
 Sweep: viscosity x E x yield (8 x 8 x 8 = 512 sets, same axes as the Episode 18 sweep) running on the two squeeze
 parts only (p06, p07; 19k and 27k steps), 6 shards, forward f32, `/workspace/runs/bag0/v4/sweep/sweep_s*.jsonl`.
+
+
+## Evening 2026-10-25: why E is invisible, and what makes it visible
+
+**Recorded springback.** Width across the blades (5-95 % extent) and height from the recorded clouds: p06 58 -> 72 mm
+after release (+14 mm, height 49 -> 36), p07 55 -> 78 mm (+23, height 40 -> 30). The simulation at the starting
+parameters recovers 0-2 mm and bulges to 31 mm instead of 49. The recovery is far above the 5-8 mm reconstruction
+noise, i.e. the data does contain E/yield information.
+
+**Springback vs parameters (p06, forward runs, width across blades):** E 20 kPa / yield 1, 5, 10 kPa: +2 mm each;
+E 60 kPa / yield 10 kPa: +1 mm; E 5 kPa / yield 1.5 kPa: +6 mm; E 3 kPa / yield 1 kPa: +8 mm; recorded +14. Yield has
+no effect on the recovery; softer E recovers more but scores worse; no combination reaches the recording. Several
+hundred simulated particles are squeezed out sideways past the blades at maximum squeeze while the real dough
+bulges up: the escape route under/along the blades (tool contact) is what the simulation gets wrong, not the
+elastic storage.
+
+**Grid 96 on p06 (9 E x yield sets):** objective 0.291-0.354 (span 0.063, twice the grid-48 span), monotone: stiffer
+and higher yield better (E 60 kPa / yield 5 kPa 0.291 vs 0.327 at the start). Needs `TAICHIDOUGH_SDF_QUALIFICATION_GRID=48`
+(the shipped 256^3 fields fail the 0.05 dx tolerance at dx 10.4 mm; diagnostic override in the worktree's data.py).
+
+**Why the loss hides it:** per-frame terms show a 0.03 floor at frame 1 rising to 0.3 during compression before any
+release (reconstruction starts 4 mm lower than the recording; recorded height reads 24-27 mm before contact); the
+initial-referenced depth term loses its pixel support as the dough moves; the recovery is ~30 of 115-164 frames.
+Frame stride 1 vs 4 costs the same time (integration dominates) and changes the objective, so frame skipping is no
+speed-up.
+
+**New loss: shape descriptors** (`/workspace/runs/bag0/shape_loss.py`, wrapper around the rollout's loss, no tree
+change): width along x, width along z and height from band means (particles ranked 90-97.5 % on each side; robust to
+leaked particles; exact piecewise gradient, finite-difference error 1e-10), squared error vs the same descriptors of
+the recorded cloud, scale 10 mm, optionally relative to the first frame (cancels the constant offset), optional
+late-frame weighting, optional mix with the original loss. First result (p06, v4, grid 48, absolute descriptors):
+
+| loss | value | E | nu | yield | tool friction | floor friction |
+|---|---|---|---|---|---|---|
+| original, all frames | 0.328 | -0.002 | -0.016 | -0.002 | -0.007 | +0.045 |
+| shape descriptors | 1.390 | **-0.062** | **+0.086** | **-0.056** | +0.136 | -0.402 |
+
+E and yield go from 0.5 % to 4-5 % effects relative to the loss (about 9x), with physically sensible signs.
+
+**v5 package + branch tip 45423a4:** same data as v4 plus a per-part grid box (p06: 22x10x21 nodes = 4 % of 48^3);
+box results are bit-identical to the full cube at grid 48; with the box, grid 96 costs ~2x grid 48 instead of 8x and
+grid 144 about the same as 96 (p06 forward: 27/45 s full-48, 22/16 s box-48, 69/42 s box-96, 46/16 s box-144, under
+GPU contention). Objective at 48 / 96 / 144: 0.336 / 0.321 / 0.310 (yield 300) and 0.327 / 0.315 / 0.322 (yield
+3000): not converged between 96 and 144. From now on all runs use v5 at grid 96 (box indices scaled x2:
+`dataset_bag0_all_von_mises_1000pa_coulomb_v5_g96.json`; a g144 variant exists too).
+
+Running: gradient tests of all loss variants (original, first+last frame, frame-referenced depth, four shape variants)
+on p06/p07 at v5/grid 96, then the viscosity x E x yield sweep (512 sets) on the two squeezes at v5/grid 96
+(`/workspace/runs/bag0/v5/`). The grid-48 v4 sweep was stopped at 40 % (`v4/sweep/`, resumable).
